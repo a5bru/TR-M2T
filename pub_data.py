@@ -74,25 +74,22 @@ try:
 
         # Handle RTCM Format
         if args.format == FMT_RTCM:
-            data = sys.stdin.buffer.read(1)
-    
+            
+            data = sys.stdin.buffer.read(1)    
             # Find Preamble byte 0b11010011
             while data != PRE_RTCM: 
                 data = sys.stdin.buffer.read(1)
-                
             # 2 first bytes: 6 bits Reserved and 10 bits Message Length (0 - 1023 bytes)
             length_data = sys.stdin.buffer.read(2)
-            
             # Masking away the first 6 Reserved  bits
             length = ((length_data[0] & 0b00000011) << 8) + length_data[1]
             packet_data = sys.stdin.buffer.read(length)
             crc24_data = sys.stdin.buffer.read(3)
-            
             # Message Number (0 - 4095) is 12 first bits of the packet_data.
             if length >= 2:
                 message_number = (packet_data[0] << 8) + packet_data[1]
                 message_number >>= 4
-                
+            # Add Message Type info to topic
             topic = args.m
             if args.topic_per_type:
                 topic += f"/{message_number:04d}"
@@ -102,7 +99,8 @@ try:
 
         # TODO Handle Septentrio's SBF Format, not tested!
         else if args.format == FMT_SBF:
-            data = sys.stdin.buffer.read(1)    
+            
+            data = sys.stdin.buffer.read(1)            
             # Find Preamble byte x24
             while data != PRE_SBF[0]: 
                 data = sys.stdin.buffer.read(1)
@@ -119,6 +117,7 @@ try:
             length = (length_data[0] << 8) + length_data[1]
             if length % 4 != 0:
                 continue
+            # Read the payload
             payload_data = sys.stdin.buffer.read(length)
 
             # Putting the bytes together
@@ -126,6 +125,7 @@ try:
            
         # TODO Handle U-blox' UBX Format, not tested!
         else if args.format == FMT_UBX:
+            
             data = sys.stdin.buffer.read(1)    
             # Find Preamble byte xb5
             while data != PRE_UBX[0]: 
@@ -151,7 +151,8 @@ try:
             data = PRE_UBX + class_data + id_data + length_data + payload_data + cka_data + ckb_data
 
         # Handle Unformatted stream
-        else:            
+        else:
+            
             data = sys.stdin.buffer.read(BUFFER_READ_SIZE)
 
         # Publish the parsed Message to MQTT
