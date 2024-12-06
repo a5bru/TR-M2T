@@ -98,7 +98,7 @@ try:
             data = PRE_RTCM + length_data + packet_data + crc24_data
 
         # TODO Handle Septentrio's SBF Format, not tested!
-        else if args.format == FMT_SBF:
+        elif args.format == FMT_SBF:
             
             data = sys.stdin.buffer.read(1)            
             # Find Preamble byte x24
@@ -124,7 +124,7 @@ try:
             data = PRE_SBF + crc_data + id_data + length_data + payload_data            
            
         # TODO Handle U-blox' UBX Format, not tested!
-        else if args.format == FMT_UBX:
+        elif args.format == FMT_UBX:
             
             data = sys.stdin.buffer.read(1)    
             # Find Preamble byte xb5
