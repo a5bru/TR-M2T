@@ -12,6 +12,8 @@
 # By using this script, you acknowledge and agree to these terms.
 
 import sys
+import os
+import select
 import paho.mqtt.client as mqtt
 import argparse
 
@@ -43,13 +45,16 @@ parser.add_argument("-n", default=USERNAME, type=str, help="Set the username")
 parser.add_argument("-c", default=PASSWORD, type=str, help="Set the password")
 parser.add_argument("--format", default=FMT_NONE, choices=FMT_CHOICES, help="Define the used format for parsing")
 parser.add_argument("--topic-per-type", action="store_true", help="Publish each message type under a special topic")
+parser.add_argument("--filter-allowed", action="store_true", help="Only publish allowed messages.")
 
 args = parser.parse_args()
 
-BUFFER_READ_SIZE = 1024
+BUFFER_READ_SIZE = 2048
+BUFFER_WAIT = 1.0  # seconds
+
 PRE_RTCM = b"\xd3"
-PRE_UBX = b"\xb5\x62"
-PRE_SBF = b"\x24\x40"
+PRE_UBX = [b"\xb5", b"\x62"]
+PRE_SBF = [b"\x24", b"\x40"]
 
 ALLOWED_MESSAGES_RTCM = [
     1001, 1002, 1003,
@@ -108,7 +113,7 @@ try:
                 message_number = (packet_data[0] << 8) + packet_data[1]
                 message_number >>= 4
 
-            if message_number not in ALLOWED_MESSAGES_RTCM:
+            if args.filter_allowed and message_number not in ALLOWED_MESSAGES_RTCM:
                 continue
             # Add Message Type info to topic
             topic = args.m
@@ -123,7 +128,7 @@ try:
             
             data = sys.stdin.buffer.read(1)            
             # Find Preamble byte x24
-            while data != PRE_SBF[0]: 
+            while data != PRE_SBF[0]:
                 data = sys.stdin.buffer.read(1)
             # Find Preamble byte x40
             data = sys.stdin.buffer.read(1)
@@ -135,14 +140,15 @@ try:
             id_data = sys.stdin.buffer.read(2)
             # Message Length
             length_data = sys.stdin.buffer.read(2)
-            length = (length_data[0] << 8) + length_data[1]
+            length = (length_data[1] << 8) + length_data[0]
             if length % 4 != 0:
+                print("wrong length", length)
                 continue
             # Read the payload
             payload_data = sys.stdin.buffer.read(length)
 
             # Putting the bytes together
-            data = PRE_SBF + crc_data + id_data + length_data + payload_data            
+            data = b"".join(PRE_SBF) + crc_data + id_data + length_data + payload_data            
            
         # TODO Handle U-blox' UBX Format, not tested!
         elif args.format == FMT_UBX:
@@ -173,11 +179,17 @@ try:
 
         # Handle Unformatted stream
         else:
-            
-            data = sys.stdin.buffer.read(BUFFER_READ_SIZE)
+
+            data = b""
+            ready, _, _ = select.select([sys.stdin,], [], [], BUFFER_WAIT)
+
+            if ready:
+                data = os.read(sys.stdin.fileno(), BUFFER_READ_SIZE)
 
         # Publish the parsed Message to MQTT
-        client.publish(topic, data)
+        if data:
+            client.publish(topic, data)
+            print("publish", args.format, topic, len(data))
 
 except KeyboardInterrupt:
     print("Interrupted by user")
