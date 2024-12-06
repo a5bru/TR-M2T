@@ -25,8 +25,8 @@ BROKER_PORT = 1883          # Change if your broker uses a different port
 TOPIC = "data"          # Change to your desired topic
 
 # MQTT authentication settings
-USERNAME = "USERNAME"  # Change to your MQTT username
-PASSWORD = "PASSWORD"  # Change to your MQTT password
+USERNAME = ""  # Change to your MQTT username
+PASSWORD = ""  # Change to your MQTT password
 
 BUFFER_READ_SIZE = 1024
 
@@ -50,7 +50,7 @@ parser.add_argument("-m", default=TOPIC, type=str, help="Set the root topic for 
 parser.add_argument("-n", default=USERNAME, type=str, help="Set the username")
 parser.add_argument("-c", default=PASSWORD, type=str, help="Set the password")
 parser.add_argument("--format", default=FMT_RTCM, choices=FMT_CHOICES, help="Define the used format for parsing")
-parser.add_argument("--topic-per-type", action="save_true", help="Publish each message type under a special topic")
+parser.add_argument("--topic-per-type", action="store_true", help="Publish each message type under a special topic")
 
 args = parser.parse_args()
 
@@ -58,7 +58,8 @@ args = parser.parse_args()
 client = mqtt.Client()
 
 # Set the username and password for authentication
-client.username_pw_set(args.n, args.c)
+if args.n and args.c:
+    client.username_pw_set(args.n, args.c)
 
 # Connect to the broker
 client.connect(args.a, args.p)
