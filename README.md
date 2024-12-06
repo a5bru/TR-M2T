@@ -7,6 +7,10 @@ Further descriptions and usage instructions can be found in the repository's Wik
 
 In Order to run the example you have to define the following:
 
-1. Define a data source (RTCM e.g. over TCP or Ntrip)
-2. Start the Provider-Script (pub_data.sh)
-3. Start the Consumer-Script (sub_data.sh)
+1. Checkout a Linux based system (e.g. Ubuntu)
+2. Install Mosquitto MQTT Broker
+3. Install a MQTT Explorer (optional)
+4. Install RTKLIB
+5. Define a data source (RTCM e.g. over TCP or Ntrip)
+6. Start the Provider-Script (pub_data.sh)
+7. Start the Consumer-Script (sub_data.sh)
