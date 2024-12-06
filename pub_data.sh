@@ -25,7 +25,5 @@ NTRIP_USER="USERNAME2"
 NTRIP_PSWD="PASSWORD2"
 NTRIP_PATH="MP1"              # WITHOUT SLASH!
 
-# Connect to the TCP server and read data
-# echo "str2str -in ntrip://${NTRIP_USER}:${NTRIP_PSWD}@${NTRIP_HOST}:${NTRIP_PORT}/${NTRIP_PATH}"
-
+# Connect to the Ntrip server and publish it with MQTT-Paho client
 str2str -in ntrip://${NTRIP_USER}:${NTRIP_PSWD}@${NTRIP_HOST}:${NTRIP_PORT}/${NTRIP_PATH} | python3 pub_data.py -a "${MQTT_HOST}" -p $MQTT_PORT -m "${MQTT_TOPIC}" -n "${MQTT_USER}" -c "${MQTT_PSWD}"
