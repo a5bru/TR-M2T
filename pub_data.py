@@ -54,20 +54,25 @@ try:
     # Continuously read from stdin
     while True:
         data = sys.stdin.buffer.read(1)
-        while data != RTCM_PREFIX:  # Find Preamble byte 0b11010011
+
+        # Find Preamble byte 0b11010011
+        while data != RTCM_PREFIX: 
             data = sys.stdin.buffer.read(1)
+            
         # 2 first bytes: 6 bits Reserved and 10 bits Message Length (0 - 1023 bytes)
         length_data = sys.stdin.buffer.read(2)
+        
         # Masking away the first 6 Reserved  bits
         length = ((length_data[0] & 0b00000011) << 8) + length_data[1]
         packet_data = sys.stdin.buffer.read(length)
         crc24_data = sys.stdin.buffer.read(3)
-
+        
         # Message Number (0 - 4095) is 12 first bits of the packet_data.
         if length >= 2:
             message_number = (packet_data[0] << 8) + packet_data[1]
             message_number >>= 4
 
+        # Publish the parsed Message to MQTT
         client.publish(TOPIC, RTCM_PREFIX+length_data+packet_data+crc24_data)
 
 except KeyboardInterrupt:
