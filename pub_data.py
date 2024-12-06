@@ -46,7 +46,7 @@ client.username_pw_set(args.n, args.c)
 client.connect(args.a, args.p)
 
 # The RTCM-parsing is based on
-#https://github.com/aortner/RpiNtripBase/blob/master/rtcmadd1008.py
+# https://github.com/aortner/RpiNtripBase/blob/master/rtcmadd1008.py
 
 RTCM_PREFIX = b"\xd3"
 
