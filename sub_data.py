@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 
 import sys
+import argparse
 import paho.mqtt.client as mqtt
 
 # Configuration
@@ -9,6 +10,17 @@ BROKER_PORT = 1883                     # Default MQTT port (or 8883 for TLS)
 USERNAME = "your_username"             # Replace with your username
 PASSWORD = "your_password"             # Replace with your password
 TOPIC = "example/topic"                # Replace with the topic you want to subscribe to
+
+FMT_RTCM = "RTCM"
+FMT_SBF = "SBF"
+FMT_UBX = "UBX"
+FMT_NONE = "NONE"
+
+FMT_CHOICES = [
+    FMT_RTCM,
+    FMT_SBF,
+    FMT_NONE,
+]
 
 parser = argparse.ArgumentParser()
 parser.add_argument("-a", default=BROKER_HOST, type=str, help="Set the host of the MQTT broker")
@@ -25,7 +37,7 @@ args = parser.parse_args()
 def on_connect(client, userdata, flags, rc):
     if rc == 0:
         print("Connected to MQTT broker successfully!")
-        print(f"Subscribing to topic: {TOPIC}")
+        print(f"Subscribing to topic: {args.m}")
         client.subscribe(args.m)
     else:
         print(f"Failed to connect, return code {rc}")
@@ -34,13 +46,14 @@ def on_connect(client, userdata, flags, rc):
 def on_message(client, userdata, msg):
     #print(f"Message received on topic {msg.topic}: {msg.payload.decode()}")
     sys.stdout.buffer.write(msg.payload)
-    sys.sdtoud.buffer.flush()
+    sys.stdout.buffer.flush()
 
 # Create an MQTT client instance
-client = mqtt.Client()
+client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION1)
 
 # Set username and password
-client.username_pw_set(args.n, args.c)
+if args.n and args.c:
+    client.username_pw_set(args.n, args.c)
 
 # Attach callback functions
 client.on_connect = on_connect
@@ -48,7 +61,7 @@ client.on_message = on_message
 
 try:
     # Connect to the broker
-    print(f"Connecting to broker at {BROKER_ADDRESS}:{BROKER_PORT}")
+    print(f"Connecting to broker at {args.a}:{args.p}")
     client.connect(args.a, args.p, 60)
 
     # Start the network loop
