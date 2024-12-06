@@ -2,8 +2,8 @@
 
 # DISCLAIMER:
 # This script is provided "as is" without any warranties or guarantees of any
-# kind, express or implied. Use of this script is at your own risk. The 
-# author(s) of this code are not responsible for any direct,  indirect, 
+# kind, express or implied. Use of this script is at your own risk. The
+# author(s) of this code are not responsible for any direct,  indirect,
 # incidental, or consequential damages resulting from its use.
 #
 # It is strongly recommended to review, test, and verify this script in a
@@ -27,7 +27,10 @@ NTRIP_PATH="MOUNTPOINT"		# WITHOUT SLASH!
 
 TCP_PORT=6666
 
+# Load the .env file
+if [ -f m2t.env ]; then
+  export $(grep -v '^#' m2t.env | xargs)
+fi
+
 # Subscribe to the topic and forward it to RTKLIB/str2str
-mosquitto_sub -h "${MQTT_HOST}" -p ${MQTT_PORT} \
-		          -u "${USER}" -P "${PSWD}" \
-				  -t "${TOPIC}" | str2str -out tcpsvr://:${TCP_PORT}
+mosquitto_sub -h "${MQTT_HOST}" -p ${MQTT_PORT} -t "${MQTT_TOPIC}" -u "${MQTT_USER}" -P "${MQTT_PSWD}"

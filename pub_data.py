@@ -15,10 +15,6 @@ import sys
 import paho.mqtt.client as mqtt
 import argparse
 
-message_number = -1
-
-parser = argparse.ArgumentParser()
-
 # MQTT broker settings
 BROKER_HOST = "127.0.0.1"  # Change to your broker's address
 BROKER_PORT = 1883          # Change if your broker uses a different port
@@ -28,12 +24,6 @@ TOPIC = "data"          # Change to your desired topic
 USERNAME = ""  # Change to your MQTT username
 PASSWORD = ""  # Change to your MQTT password
 
-BUFFER_READ_SIZE = 1024
-
-PRE_RTCM = b"\xd3"
-PRE_UBX = b"\xb5\x62"
-PRE_SBF = b"\x24\x40"
-
 FMT_RTCM = "RTCM"
 FMT_SBF = "SBF"
 FMT_UBX = "UBX"
@@ -41,21 +31,48 @@ FMT_NONE = "NONE"
 
 FMT_CHOICES = [
     FMT_RTCM,
+    FMT_SBF,
     FMT_NONE,
 ]
 
+parser = argparse.ArgumentParser()
 parser.add_argument("-a", default=BROKER_HOST, type=str, help="Set the host of the MQTT broker")
 parser.add_argument("-p", default=BROKER_PORT, type=int, help="Set the port of the MQTT broker")
 parser.add_argument("-m", default=TOPIC, type=str, help="Set the root topic for the data")
 parser.add_argument("-n", default=USERNAME, type=str, help="Set the username")
 parser.add_argument("-c", default=PASSWORD, type=str, help="Set the password")
-parser.add_argument("--format", default=FMT_RTCM, choices=FMT_CHOICES, help="Define the used format for parsing")
+parser.add_argument("--format", default=FMT_NONE, choices=FMT_CHOICES, help="Define the used format for parsing")
 parser.add_argument("--topic-per-type", action="store_true", help="Publish each message type under a special topic")
 
 args = parser.parse_args()
 
+BUFFER_READ_SIZE = 1024
+PRE_RTCM = b"\xd3"
+PRE_UBX = b"\xb5\x62"
+PRE_SBF = b"\x24\x40"
+
+ALLOWED_MESSAGES_RTCM = [
+    1001, 1002, 1003,
+    1005, 1006, 1007, 1008, 1009, 1010, 1011,
+    1004, 1012, 1013,
+    1019, 1020,
+    1029,
+    1032, 1033, 1034, 1035,
+    1041, 1042, 1044, 1045, 1046,
+    1071, 1081, 1091, 1101, 1111, 1121, 1131,
+    1072, 1082, 1092, 1102, 1112, 1122, 1132,
+    1073, 1083, 1093, 1103, 1113, 1123, 1133,
+    1074, 1084, 1094, 1104, 1114, 1124, 1134,
+    1075, 1085, 1095, 1105, 1115, 1125, 1135,
+    1076, 1086, 1096, 1106, 1116, 1126, 1136,
+    1077, 1087, 1097, 1107, 1117, 1127, 1137,
+    1230,
+]
+
+message_number = -1
+
 # Create an MQTT client
-client = mqtt.Client()
+client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
 
 # Set the username and password for authentication
 if args.n and args.c:
@@ -90,6 +107,9 @@ try:
             if length >= 2:
                 message_number = (packet_data[0] << 8) + packet_data[1]
                 message_number >>= 4
+
+            if message_number not in ALLOWED_MESSAGES_RTCM:
+                continue
             # Add Message Type info to topic
             topic = args.m
             if args.topic_per_type:

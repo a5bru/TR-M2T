@@ -25,12 +25,16 @@ NTRIP_USER="USERNAME2"
 NTRIP_PSWD="PASSWORD2"
 NTRIP_PATH="MP1"              # WITHOUT SLASH!
 
+FORMAT="NONE"
+
 # Load the .env file
 if [ -f m2t.env ]; then
   export $(grep -v '^#' m2t.env | xargs)
 fi
 
-echo "HOST: $MQTT_HOST"
-
 # Connect to the Ntrip server and publish it with MQTT-Paho client
-str2str -in ntrip://${NTRIP_USER}:${NTRIP_PSWD}@${NTRIP_HOST}:${NTRIP_PORT}/${NTRIP_PATH} | python3 pub_data.py -a "${MQTT_HOST}" -p $MQTT_PORT -m "${MQTT_TOPIC}" -n "${MQTT_USER}" -c "${MQTT_PSWD}"
+str2str -in ntrip://${NTRIP_USER}:${NTRIP_PSWD}@${NTRIP_HOST}:${NTRIP_PORT}/${NTRIP_PATH} | \
+	python3 pub_data.py -a "${MQTT_HOST}" -p $MQTT_PORT -m "${MQTT_TOPIC}" -n "${MQTT_USER}" -c "${MQTT_PSWD}" --format "${FORMAT}"
+
+#curl -A "Ntrip cURL" --user "${NTRIP_USER}:${NTRIP_PSWD}" http://${NTRIP_HOST}:${NTRIP_PORT}/${NTRIP_PATH} --http0.9 --output - | \
+#        python3 pub_data.py -a "${MQTT_HOST}" -p $MQTT_PORT -m "${MQTT_TOPIC}" -n "${MQTT_USER}" -c "${MQTT_PSWD}" --format "${FORMAT}"
