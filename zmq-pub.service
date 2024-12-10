@@ -1,0 +1,13 @@
+[Unit]
+Description=Service for ZMQ to MQTT
+After=network.target
+
+[Service]
+WorkingDirectory=/root/TR-M2T
+ExecStart=python3 /root/TR-M2T/zmq_mqtt.py -a "vmi2306012.contaboserver.net"
+EnvironmentFile=/root/TR-M2T/m2t.env
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

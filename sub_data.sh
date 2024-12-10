@@ -36,6 +36,6 @@ fi
 # Subscribe to the topic and forward it to RTKLIB/str2str
 #mosquitto_sub -h "${MQTT_HOST}" -p ${MQTT_PORT} -t "${MQTT_TOPIC}" -u "${MQTT_USER}" -P "${MQTT_PSWD}"
 
-echo python3 pub_data.py -a "${MQTT_HOST}" -p $MQTT_PORT -m "${MQTT_TOPIC}" -n "${MQTT_USER}" -c "${MQTT_PSWD}" --format "${FORMAT}"
+echo python3 sub_data.py -a "${MQTT_HOST}" -p $MQTT_PORT -m "${MQTT_TOPIC}" -n "${MQTT_USER}" -c "${MQTT_PSWD}" --format "${FORMAT}"
 python3 sub_data.py -a "${MQTT_HOST}" -p $MQTT_PORT -m "${MQTT_TOPIC}" -n "${MQTT_USER}" -c "${MQTT_PSWD}" --format "${FORMAT}"
 

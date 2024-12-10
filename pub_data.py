@@ -14,6 +14,7 @@
 import sys
 import os
 import select
+import time
 import paho.mqtt.client as mqtt
 import argparse
 
@@ -190,6 +191,8 @@ try:
         if data:
             client.publish(topic, data)
             print("publish", args.format, topic, len(data))
+
+        time.sleep(0.001)
 
 except KeyboardInterrupt:
     print("Interrupted by user")

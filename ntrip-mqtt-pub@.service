@@ -1,0 +1,13 @@
+[Unit]
+Description=Publish Data Script for Mountpoint %i
+After=network.target
+
+[Service]
+WorkingDirectory=/root/TR-M2T
+ExecStart=/root/TR-M2T/pub_data.sh %i
+EnvironmentFile=/root/TR-M2T/m2t.env
+Restart=always
+RestartSec=15
+
+[Install]
+WantedBy=multi-user.target
