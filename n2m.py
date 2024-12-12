@@ -16,6 +16,8 @@ import os
 import socket
 import select
 import time
+import string
+import random
 import argparse
 import paho.mqtt.client as mqtt
 import base64
@@ -62,18 +64,23 @@ parser.add_argument("-m", default=MQTT_PATH, type=str, help="Set the root topic 
 parser.add_argument("-n", default=MQTT_USER, type=str, help="Set the MQTT username")
 parser.add_argument("-c", default=MQTT_PSWD, type=str, help="Set the MQTTpassword")
 # Settings for the Format
+parser.add_argument("--timeout", default=15, type=int, help="Timeout with no data")
 parser.add_argument("--format", default=FMT_NONE, choices=FMT_CHOICES, help="Define the used format for parsing")
 parser.add_argument("--topic-per-type", action="store_true", help="Publish each message type under a special topic")
 parser.add_argument("--filter-allowed", action="store_true", help="Only publish allowed messages.")
 
 args = parser.parse_args()
 
-# Initialize MQTT Client
-mqtt_client = mqtt.Client()
-mqtt_client.connect(args.a, args.p)
+def generate_random_string(length):
+    characters = string.ascii_letters + string.digits
+    random_string = ''.join(random.choice(characters) for _ in range(length))
+    return random_string
+
 
 SOURCES_FILE = "sources.txt"
 SOURCES_DICT = {}
+
+
 
 def create_tcp_client(client_path, auth):
     # Create a TCP socket
@@ -114,33 +121,46 @@ def main():
     client_socket = create_tcp_client(args.D, auth)
     if client_socket == -1:
         sys.exit(1)
-    clients = [client_socket, ]
+
+    # Initialize MQTT Client
+    mqtt_client_id = f"n2m-{args.D}-{generate_random_string(8)}"
+    mqtt_client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=mqtt_client_id)
+    if args.n and args.c:
+        mqtt_client.username_pw_set(args.n, args.c)
+    
+    mqtt_client.connect(args.a, args.p)
 
     keep_running = True
+    next_beat = time.time()
+    mqtt_client.loop_start()  # Start the MQTT client loop
+
     while keep_running:
         # Use select to wait for any socket to be ready for processing
-        readable, _, _ = select.select(clients, [], [], 15.0)
+        readable, _, _ = select.select([client_socket, ], [], [], 1.0)
+        if readable:
+            try:
+                # Get topic for client or skip
+                if client_socket not in SOURCES_DICT:
+                    print("W: unknown source", client_socket)
+                    continue
+                topic = f"s2d/osr/{SOURCES_DICT[client_socket]}/rtcm"
+                data = client_socket.recv(1024)
+                assert len(data) > 0
+                # Publish received data to MQTT
+                mqtt_client.publish(topic, data)
+                next_beat = time.time()
+            except Exception as e:
+                print(e) 
+        else:
+            this_beat = time.time()
+            if this_beat - next_beat > args.timeout:
+                print(f"W: No data {args.D}")
+                keep_running = False
+        time.sleep(0.01)
 
-        for s in readable:
-            if s in clients:
-                try:
-                    # Get topic for client or skip
-                    if s not in SOURCES_DICT:
-                        print("W: unknown source", s)
-                        continue
-                    topic = f"s2d/osr/{SOURCES_DICT[s]}/rtcm"
-                    data = s.recv(1024)
-                    if data:
-                        # Publish received data to MQTT
-                        mqtt_client.publish(topic, data)
-                        # print(f"Published: {topic} from client {clients.index(s)}")
-                except Exception as e:
-                    print(e) 
-        time.sleep(0.000001)
+    mqtt_client.loop_stop()  # Stop the MQTT client loop
 
 
 if __name__ == "__main__":
-    mqtt_client.loop_start()  # Start the MQTT client loop
     main()  # Run the main function
-    mqtt_client.loop_stop()  # Stop the MQTT client loop
 
