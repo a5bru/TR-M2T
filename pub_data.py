@@ -1,15 +1,16 @@
 #!/usr/bin/python3
 
 # DISCLAIMER:
-# This script is provided "as is" without any warranties or guarantees of any
-# kind, express or implied. Use of this script is at your own risk. The 
-# author(s) of this code are not responsible for any direct,  indirect, 
-# incidental, or consequential damages resulting from its use.
+# This code is provided "as is" without any warranties or guarantees of any kind. Use it at your 
+# own risk. The author is not responsible for any damage or loss that may occur through the use 
+# of this code.
 #
-# It is strongly recommended to review, test, and verify this script in a
-# controlled environment before using it in any production or critical systems.
+# Always review and test the code thoroughly before using it in any production environment.
 #
-# By using this script, you acknowledge and agree to these terms.
+# It is strongly recommended to test this code in a controlled, non-production environment 
+# before deploying it to a live system. Ensure that all functionalities work as expected and 
+# that the code does not introduce any security vulnerabilities or performance issues.
+
 
 import sys
 import os
@@ -182,9 +183,9 @@ try:
         else:
 
             data = b""
-            ready, _, _ = select.select([sys.stdin,], [], [], BUFFER_WAIT)
+            readable, _, _ = select.select([sys.stdin,], [], [], BUFFER_WAIT)
 
-            if ready:
+            if len(readable) > 0:
                 data = os.read(sys.stdin.fileno(), BUFFER_READ_SIZE)
 
         # Publish the parsed Message to MQTT
