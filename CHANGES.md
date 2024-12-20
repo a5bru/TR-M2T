@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - 2024-12-20
+
+- run_connections.py: script that pushes sqlite handled connections from ntrip to mqtt
+- handle_connections.py: script for sqlite interaction
+- ntrip-mqtt-hub.service: systemd unit for run_connections.py script
+- m2t.env: use that environment file to configure (not in repo!)
+
 ### Suggestion
 
 - Add Environment File for Variables

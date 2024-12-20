@@ -1,0 +1,13 @@
+[Unit]
+Description=Publish Data Script for sqlite based mountpoint publishing
+After=network.target
+
+[Service]
+WorkingDirectory=/root/TR-M2T
+ExecStart=/usr/bin/python3 /root/TR-M2T/run_connections.py
+EnvironmentFile=/root/TR-M2T/m2t.env
+Restart=always
+RestartSec=15
+
+[Install]
+WantedBy=multi-user.target
