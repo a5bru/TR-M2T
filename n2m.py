@@ -80,8 +80,6 @@ def generate_random_string(length):
 SOURCES_FILE = "sources.txt"
 SOURCES_DICT = {}
 
-
-
 def create_tcp_client(client_path, auth):
     # Create a TCP socket
     client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -101,12 +99,16 @@ def create_tcp_client(client_path, auth):
         request += f"Host: {args.H}\r\n"
         request += f"Authorization: Basic {auth}\r\n"
         request += "\r\n"
-        client_socket.sendall(request.encode())  
+        client_socket.sendall(request.encode()) 
+        seconds = 4.0 
+        readable, _, _ = select.select([client_socket, ], [], [], seconds)
+        if not readable:
+            assert False, f"E: {client_path}: No Response within {seconds} secs."
         data = client_socket.recv(1024)
         assert b"200" in data, f"E: {client_path}: {data[:20].decode()}"
         assert b"SOURCETABLE" not in data, f"E: {client_path}: not available"
-        print("Source OK %s" % client_path)
     except AssertionError as e:
+        print(e, file=sys.stderr)
         return -1
 
     SOURCES_DICT[client_socket] = client_path
@@ -145,18 +147,18 @@ def main():
                     continue
                 topic = f"s2d/osr/{SOURCES_DICT[client_socket]}/rtcm"
                 data = client_socket.recv(1024)
-                assert len(data) > 0
+                assert len(data) > 0, f"E: {args.D}: Empty response"
                 # Publish received data to MQTT
                 mqtt_client.publish(topic, data)
                 next_beat = time.time()
             except Exception as e:
-                print(e) 
+                print(e, file=sys.stderr) 
         else:
             this_beat = time.time()
             if this_beat - next_beat > args.timeout:
                 print(f"W: No data {args.D}")
                 keep_running = False
-        time.sleep(0.01)
+        time.sleep(0.1)
 
     mqtt_client.loop_stop()  # Stop the MQTT client loop
 
