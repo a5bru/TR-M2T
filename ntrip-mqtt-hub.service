@@ -4,7 +4,8 @@ After=network.target
 
 [Service]
 WorkingDirectory=/root/TR-M2T
-ExecStart=/usr/bin/python3 /root/TR-M2T/run_connections.py
+#ExecStart=/usr/bin/python3 /root/TR-M2T/run_connections.py
+ExecStart=/usr/bin/python3 /root/TR-M2T/connection_hub.py
 EnvironmentFile=/root/TR-M2T/m2t.env
 Restart=always
 RestartSec=15
