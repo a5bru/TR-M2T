@@ -78,7 +78,7 @@ def fetch_mountpoints():
 
 parser = argparse.ArgumentParser()
 parser.add_argument("name", type=str)
-parser.add_argument("--url", type=str, default="http://bev:Vj2CDyJg@igs-ip.net:80")
+parser.add_argument("--url", type=str)
 parser.add_argument("--enable", action="store_true")
 
 

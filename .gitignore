@@ -709,3 +709,5 @@ sourcetable.txt
 connections.db
 died_sources.txt
 mountpoints.db
+venv/*
+mountpoints.dat sourcetable.dat

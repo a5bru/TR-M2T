@@ -10,7 +10,7 @@ import base64
 import threading
 import string
 import os
-import queue
+# import queue
 import random
 import paho.mqtt.client as mqtt
 
@@ -32,7 +32,6 @@ class DataConnection:
         self.url = url
         self.active = active
         self.socket = socket
-        self.inactive_count = 0
 
 
 def update_mountpoint(id, name=None, connection_string=None, active=None):
@@ -132,15 +131,15 @@ def creation_thread(id: int, connection_string: str):
         fd = conn.fileno()
         selector.register(conn, selectors.EVENT_READ)
         connections[fd] = DataConnection(idx=id, url=connection_string, socket=conn, active=True) 
-        if o.path in inactive_count:
-            inactive_count.pop(o.path)
+        if o.path in inactive:
+            inactive.pop(o.path)
     else:
-        if o.path not in inactive_count:
-            inactive_count[o.path] = 0
+        if o.path not in inactive:
+            inactive[o.path] = 0
 
-        inactive_count[o.path] += 1
+        inactive[o.path] += 1
 
-        if inactive_count[o.path] > MAX_INACTIVE_COUNT:
+        if inactive[o.path] > MAX_INACTIVE_COUNT:
             # TODO disable mountpoint
             update_mountpoint(id, active=False)
  
@@ -264,7 +263,7 @@ def main():
     MQTT_HOST = os.environ.get("MQTT_HOST", "localhost")
     MQTT_PORT = os.environ.get("MQTT_PORT", "1883")
     MQTT_USER = os.environ.get("MQTT_USER", "user")
-    MQTT_PSWD = os.environ.get("MQTT_USER", "pswd")
+    MQTT_PSWD = os.environ.get("MQTT_PSWD", "pswd")
     mqtt_url = f"mqtt://{MQTT_USER}:{MQTT_PSWD}@{MQTT_HOST}:{MQTT_PORT}"
     for i in range(WORKERS):
         t = threading.Thread(target=worker, args=(i, mqtt_url))

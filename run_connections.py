@@ -7,12 +7,11 @@ import selectors
 import time
 import threading
 import base64
-import queue
+#import queue
 import threading
 import string
 import os
 import random
-import pickle
 
 import paho.mqtt.client as mqtt
 
