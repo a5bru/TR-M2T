@@ -10,11 +10,12 @@ import base64
 import threading
 import string
 import os
-# import queue
+import queue
 import random
 import paho.mqtt.client as mqtt
 
 from urllib.parse import urlparse
+import setproctitle
 
 WORKERS = int(os.environ.get("MQTT_HUB_WORKERS", "2"))
 ZMQ_PULL_PORT = int(os.environ.get("ZMQ_PULL_PORT", "6969"))
@@ -24,6 +25,10 @@ context = zmq.Context()
 selector = selectors.DefaultSelector()
 connections = {}
 inactive = {}
+
+run_event = threading.Event()
+
+enable_queue = queue.Queue()
 
 
 class DataConnection:
@@ -145,20 +150,28 @@ def creation_thread(id: int, connection_string: str):
  
 
 
-def check_mountpoints(sock):
+def check_mountpoints(name: str, sock):
 
-    while True:
+    setproctitle.setproctitle(name)
+    print(f"Thread {name}")
+
+    while not run_event.is_set():
 
         print("Check for active mountpoints")
         active_mountpoints = fetch_active_mountpoints()
         active_ids = set(mp[0] for mp in active_mountpoints)
+        found_inactive = False
 
         # shut down active stream
         for fd in list(connections.keys()):
             if connections[fd].idx not in active_ids:
+                enable_queue.put_nowait(int(fd))
                 o = urlparse(connections[fd].url)
                 print(f"I: {o.path}: Closing connection")
-                sock.sendall(f"{fd}:".encode())
+                found_inactive = True
+
+        if found_inactive:
+            sock.sendall(b"1")
 
         # active stream
         active_streams = []
@@ -173,24 +186,31 @@ def check_mountpoints(sock):
         time.sleep(10)
 
 
-def handle_events(sock):
+def handle_events(name: str, sock):
+    
+    setproctitle.setproctitle(name)
+    print(f"Thread {name}")
 
     sender = context.socket(zmq.PUSH)
     sender.bind(f"tcp://*:{ZMQ_PULL_PORT}")
     selector.register(sock, selectors.EVENT_READ)
 
-    while True:
+    while not run_event.is_set():
 
         events = selector.select(timeout=None)
 
-        for key, mask in events:
+        for key, _ in events:
             conn = key.fileobj
             data = conn.recv(1024)
 
             if conn == sock:
                 # remove a connection
-                for fd_b in sock.recv(1024).split(b":"):
-                    fd = int(fd_b)
+                conn.recv(10)
+                while not enable_queue.empty():
+                # for fd_b in sock.recv(1024).split(b":"):
+                    fd = int(enable_queue.get())
+                    enable_queue.task_done()
+                    # fd = int(fd_b)
                     if fd in connections:
                         selector.unregister(connections[fd].socket)
                         connections[fd].active = False
@@ -211,7 +231,10 @@ def handle_events(sock):
         time.sleep(0.0001)
 
 
-def worker(w_id: int, url: str):
+def worker(name: str, w_id: int, url: str):
+
+    setproctitle.setproctitle(name)
+    print(f"Thread {name}")
 
     receiver = context.socket(zmq.PULL)
     receiver.connect(f"tcp://localhost:{ZMQ_PULL_PORT}")
@@ -226,13 +249,12 @@ def worker(w_id: int, url: str):
     
     mqtt_client.connect(o.hostname, o.port)
 
-    keep_running = True
     next_beat = time.time()
     mqtt_client.loop_start()  # Start the MQTT client loop
 
     print(f"Started MQTT client {mqtt_client_id}")
 
-    while True:
+    while not run_event.is_set():
 
         fd, data = receiver.recv_pyobj()
 
@@ -255,7 +277,7 @@ def worker(w_id: int, url: str):
     mqtt_client.loop_stop()  # Stop the MQTT client loop
 
 
-def main():
+def main(name: str):
 
     sock1, sock2 = socket.socketpair()
 
@@ -265,21 +287,29 @@ def main():
     MQTT_USER = os.environ.get("MQTT_USER", "user")
     MQTT_PSWD = os.environ.get("MQTT_PSWD", "pswd")
     mqtt_url = f"mqtt://{MQTT_USER}:{MQTT_PSWD}@{MQTT_HOST}:{MQTT_PORT}"
+    print(f"MQTT_URL: {mqtt_url}")
     for i in range(WORKERS):
-        t = threading.Thread(target=worker, args=(i, mqtt_url))
+        t = threading.Thread(target=worker, args=(f"HUB/WRK/{i:02d}", i, mqtt_url,))
         t.daemon = True
         t.start()
     time.sleep(3)
 
     # start checker thread
-    db_thread = threading.Thread(target=check_mountpoints, args=(sock1,))
+    db_thread = threading.Thread(target=check_mountpoints, args=("HUB/CHK", sock1,))
     db_thread.daemon = True
     db_thread.start()
 
     # start selector
-    handle_events(sock2)
+    ev_thread = threading.Thread(target=handle_events, args=("HUB/EVE", sock2,))
+    ev_thread.daemon = True
+    ev_thread.start()
+  
+    setproctitle.setproctitle(name)
+    print(f"Thread {name}")
+
+    while not run_event.is_set():
+        time.sleep(1)
 
 
 if __name__ == "__main__":
-    main()
-
+    main("HUB/MAIN")

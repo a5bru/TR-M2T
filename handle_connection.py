@@ -1,3 +1,4 @@
+import os
 import sqlite3
 import argparse
 
@@ -78,7 +79,7 @@ def fetch_mountpoints():
 
 parser = argparse.ArgumentParser()
 parser.add_argument("name", type=str)
-parser.add_argument("--url", type=str)
+parser.add_argument("--url", type=str, default=os.environ.get("NTRIP_URL", ""))
 parser.add_argument("--enable", action="store_true")
 
 
@@ -88,7 +89,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     # Example usage
-    insert_mountpoint(args.name, f"{args.url}/{args.name}", args.enable)
+    if args.url:
+        insert_mountpoint(args.name, f"{args.url}/{args.name}", args.enable)
 
     #for i in range(10, 20):
     #    update_mountpoint(i, active=True)
