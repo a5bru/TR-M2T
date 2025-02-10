@@ -197,7 +197,7 @@ def handle_events(name: str, sock):
 
     while not run_event.is_set():
 
-        events = selector.select(timeout=None)
+        events = selector.select(timeout=1.0)
 
         for key, _ in events:
             conn = key.fileobj
@@ -227,8 +227,6 @@ def handle_events(name: str, sock):
                     if fd in connections:
                         connections[fd].active = False
                         del connections[fd]
-
-        time.sleep(0.0001)
 
 
 def worker(name: str, w_id: int, url: str):
