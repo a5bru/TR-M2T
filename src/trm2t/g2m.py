@@ -14,7 +14,11 @@ def run():
     db = client["rt_ppp_example"]
     collection = db["States"]
     try:
-        with collection.watch() as stream:
+        pipeline = [
+            {"$match": {"operationType": "insert"}},
+            {"$match": {"fullDocument.State": "REC_POS"}}
+        ]
+        with collection.watch(pipeline) as stream:
             for change in stream:
                 handle_change(change)
 
