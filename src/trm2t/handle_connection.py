@@ -2,7 +2,7 @@ import os
 import sqlite3
 import argparse
 
-DATABASE = os.environ.get("TRM2T_DATABASE", "mounpoints.db")
+DATABASE = os.environ.get("TRM2T_DATABASE", "mountpoints.db")
 
 
 def setup_database():

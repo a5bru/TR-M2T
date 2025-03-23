@@ -80,7 +80,7 @@ def create_tcp_client(url):
 
     except AssertionError as e:
         print(e, file=sys.stderr)
-        return None
+        return -1
 
     client_socket.setblocking(0)  # Set socket to non-blocking
     return client_socket
