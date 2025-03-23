@@ -20,6 +20,7 @@ import setproctitle
 WORKERS = int(os.environ.get("MQTT_HUB_WORKERS", "2"))
 ZMQ_PULL_PORT = int(os.environ.get("ZMQ_PULL_PORT", "6969"))
 MAX_INACTIVE_COUNT = int(os.environ.get("HUB_MAX_INACTIVE_COUNT", "10"))
+DATABASE = os.environ.get("TRM2T_DATABSE", "mountpoints.db")
 
 context = zmq.Context()
 selector = selectors.DefaultSelector()
@@ -40,7 +41,7 @@ class DataConnection:
 
 
 def update_mountpoint(id, name=None, connection_string=None, active=None):
-    conn = sqlite3.connect('mountpoints.db')
+    conn = sqlite3.connect(DATABASE)
     cursor = conn.cursor()
     update_fields = []
     params = []
@@ -120,7 +121,7 @@ def create_tcp_client(url: str):
 
 
 def fetch_active_mountpoints():
-    conn = sqlite3.connect('mountpoints.db')
+    conn = sqlite3.connect(DATABASE)
     cursor = conn.cursor()
     cursor.execute("SELECT id, connection_string FROM mountpoints WHERE active = 1")
     rows = cursor.fetchall()

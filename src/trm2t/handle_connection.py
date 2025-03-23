@@ -2,9 +2,11 @@ import os
 import sqlite3
 import argparse
 
+DATABASE = os.environ.get("TRM2T_DATABASE", "mounpoints.db")
+
 
 def setup_database():
-    conn = sqlite3.connect('mountpoints.db')
+    conn = sqlite3.connect(DATABASE)
     cursor = conn.cursor()
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS mountpoints (
@@ -19,7 +21,7 @@ def setup_database():
 
 
 def insert_mountpoint(name, connection_string, active):
-    conn = sqlite3.connect('mountpoints.db')
+    conn = sqlite3.connect(DATABASE)
     cursor = conn.cursor()
     cursor.execute('''
         INSERT INTO mountpoints (name, connection_string, active) 
@@ -30,7 +32,7 @@ def insert_mountpoint(name, connection_string, active):
 
 
 def update_mountpoint(id, name=None, connection_string=None, active=None):
-    conn = sqlite3.connect('mountpoints.db')
+    conn = sqlite3.connect(DATABASE)
     cursor = conn.cursor()
     update_fields = []
     params = []
@@ -57,7 +59,7 @@ def update_mountpoint(id, name=None, connection_string=None, active=None):
 
 
 def delete_mountpoint(id):
-    conn = sqlite3.connect('mountpoints.db')
+    conn = sqlite3.connect(DATABASE)
     cursor = conn.cursor()
     cursor.execute('''
         DELETE FROM mountpoints WHERE id = ?
@@ -67,7 +69,7 @@ def delete_mountpoint(id):
 
 
 def fetch_mountpoints():
-    conn = sqlite3.connect('mountpoints.db')
+    conn = sqlite3.connect(DATABASE)
     cursor = conn.cursor()
     cursor.execute('''
         SELECT * FROM mountpoints
