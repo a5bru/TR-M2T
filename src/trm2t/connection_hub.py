@@ -1,26 +1,30 @@
 import sys
 import sqlite3
-import zmq
 import socket
 import select
 import selectors
+import string
 import time
-import threading
 import base64
 import threading
-import string
+import traceback 
 import os
 import queue
 import random
-import paho.mqtt.client as mqtt
+import io
 
+from collections import deque
 from urllib.parse import urlparse
+
+import zmq
+import paho.mqtt.client as mqtt
 import setproctitle
 
 WORKERS = int(os.environ.get("MQTT_HUB_WORKERS", "2"))
 ZMQ_PULL_PORT = int(os.environ.get("ZMQ_PULL_PORT", "6969"))
 MAX_INACTIVE_COUNT = int(os.environ.get("HUB_MAX_INACTIVE_COUNT", "10"))
 DATABASE = os.environ.get("TRM2T_DATABSE", "mountpoints.db")
+PARSE_RAW = os.environ.get("TRM2T_PARSE_RAW", False)
 
 context = zmq.Context()
 selector = selectors.DefaultSelector()
@@ -38,6 +42,7 @@ class DataConnection:
         self.url = url
         self.active = active
         self.socket = socket
+        self._buffer = io.BytesIO() 
 
 
 def update_mountpoint(id, name=None, connection_string=None, active=None):
@@ -262,13 +267,43 @@ def worker(name: str, w_id: int, url: str):
                 url = connections[fd].url
                 o2 = urlparse(url)
                 p2 = o2.path[1:]
-
                 topic = f"s2d/osr/{p2}/rtcm"
-                if len(data) > 0:
-                    # Publish received data to MQTT
-                    mqtt_client.publish(topic, data)
+                connections[fd]._buffer.write(data)
+                connections[fd]._buffer.seek(0)
+
+                if PARSE_RAW:
+                    keep_reading = True
+                    # TODO choose raw format depending on stream
+                    while keep_reading:
+                        chunk = connections[fd]._buffer.read(1)
+                        while (chunk != b"\xd3") and keep_reading:
+                            chunk = connections[fd]._buffer.read(1)
+                        print("RTCM")
+                        length_data = connections[fd]._buffer.read(2)
+                        length = (length_data[0] << 8) + length_data[1]
+                        if len(connections[fd]._buffer.getvalue()) < length:
+                            remaining_buffer = connections[fd]._buffer.read()
+                            connections[fd]._buffer = io.BytesIO()
+                            connections[fd]._buffer.write(b"\xd3" + length_data)
+                            connections[fd]._buffer.seek(0)
+                            keep_reading = False
+                            continue
+                        packet_data = connections[fd]._buffer.read(length)
+                        crc24_data = connections[fd]._buffer.read(3)
+                        message_number = (packet_data[0] << 8) + packet_data[1]
+                        message_number >>= 4
+                        topicM = f"{topic}/{message_number}"
+                        mqtt_client.publish(topicM, data)
+                        # check if puffer is empty
+                        if connections[fd]._buffer.tell() == len(connections[fd]._buffer.getvalue()):
+                            keep_reading = False
+                else:
+                    if len(data) > 0:
+                        # Publish received data to MQTT
+                        mqtt_client.publish(topic, data)
 
             except Exception as e:
+                traceback.print_exc()
                 print(e)
 
         time.sleep(0.000000001)

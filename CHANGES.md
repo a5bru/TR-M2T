@@ -19,6 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CHG: folder structure
 - ADD: environment variable for database
 
+### 2025-03-27
+
+- ADD: rtcm parsing, not ready yet
+
 ## Suggestion
 
 - Add Environment File for Variables
