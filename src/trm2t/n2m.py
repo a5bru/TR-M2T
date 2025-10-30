@@ -23,6 +23,9 @@ import argparse
 import paho.mqtt.client as mqtt
 import base64
 from dotenv import load_dotenv
+from pyrtcm import RTCMReader
+
+BUFFER_SIZE = 1024*2
 
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 ENV_PATH = os.path.join(ROOT_DIR, ".env")
@@ -100,7 +103,6 @@ parser.add_argument(
 )
 
 args = parser.parse_args()
-print(args)
 
 
 def generate_random_string(length):
@@ -146,7 +148,7 @@ def create_tcp_client(client_path, auth):
         )
         if not readable:
             assert False, f"E: {client_path}: No Response within {seconds} secs."
-        data = client_socket.recv(1024)
+        data = client_socket.recv(BUFFER_SIZE)
         assert b"200" in data, f"E: {client_path}: {data[:20].decode()}"
         assert b"SOURCETABLE" not in data, f"E: {client_path}: not available"
         if args.verbose:
@@ -163,60 +165,129 @@ def create_tcp_client(client_path, auth):
 def main():
 
     auth = base64.b64encode(f"{args.U}:{args.W}".encode()).decode()
-    if args.verbose:
-        print(f"C: connecting to {args.H}:{args.P} as {args.U}")
-    client_socket = create_tcp_client(args.D, auth)
-    if client_socket == -1:
-        sys.exit(1)
-
-    # Initialize MQTT Client
-    mqtt_client_id = f"n2m-{args.D}-{generate_random_string(8)}"
-    mqtt_client = mqtt.Client(
-        mqtt.CallbackAPIVersion.VERSION2, client_id=mqtt_client_id
-    )
-    if args.n and args.c:
-        mqtt_client.username_pw_set(args.n, args.c)
-
-    mqtt_client.connect(args.a, args.p)
-
-    keep_running = True
+    mqtt_client = None
+    client_socket = None
+    mqtt_connected = False
+    ntrip_connected = False
+    retry_delay = 5  # seconds
+    max_retry_delay = 60  # seconds
     next_beat = time.time()
-    mqtt_client.loop_start()  # Start the MQTT client loop
+    keep_running = True
+
+    def connect_mqtt():
+        nonlocal mqtt_client, mqtt_connected
+        while True:
+            try:
+                mqtt_client_id = f"n2m-{args.D}-{generate_random_string(8)}"
+                mqtt_client = mqtt.Client(
+                    mqtt.CallbackAPIVersion.VERSION2, client_id=mqtt_client_id
+                )
+                if args.n and args.c:
+                    mqtt_client.username_pw_set(args.n, args.c)
+                mqtt_client.connect(args.a, args.p)
+                mqtt_client.loop_start()
+                mqtt_connected = True
+                if args.verbose:
+                    print("MQTT connected.")
+                break
+            except Exception as e:
+                print(f"MQTT connection failed: {e}", file=sys.stderr)
+                mqtt_connected = False
+                time.sleep(retry_delay)
+
+    def connect_ntrip():
+        nonlocal client_socket, ntrip_connected
+        while True:
+            client_socket = create_tcp_client(args.D, auth)
+            if client_socket == -1:
+                ntrip_connected = False
+                print("Retrying NTRIP connection in", retry_delay, "seconds...")
+                time.sleep(retry_delay)
+            else:
+                ntrip_connected = True
+                if args.verbose:
+                    print("NTRIP connected.")
+                break
+
+    connect_mqtt()
+    connect_ntrip()
+    next_beat = time.time()
 
     while keep_running:
-        # Use select to wait for any socket to be ready for processing
-        readable, _, _ = select.select(
-            [
-                client_socket,
-            ],
-            [],
-            [],
-            1.0,
-        )
-        if readable:
-            try:
-                # Get topic for client or skip
-                if client_socket not in SOURCES_DICT:
-                    print("W: unknown source", client_socket)
-                    continue
-                topic = f"s2d/osr/{SOURCES_DICT[client_socket]}/rtcm"
-                data = client_socket.recv(1024)
-                assert len(data) > 0, f"E: {args.D}: Empty response"
-                # Publish received data to MQTT
-                if args.verbose:
-                    print(f"P: {topic}: {len(data)} bytes")
-                mqtt_client.publish(topic, data)
-                next_beat = time.time()
-            except Exception as e:
-                print(e, file=sys.stderr)
-        else:
-            this_beat = time.time()
-            if this_beat - next_beat > args.timeout:
-                print(f"W: No data {args.D}")
-                keep_running = False
-        time.sleep(0.1)
+        # Check MQTT connection
+        if not mqtt_connected:
+            if args.verbose:
+                print("Reconnecting MQTT...")
+            connect_mqtt()
+        # Check NTRIP connection
+        if not ntrip_connected:
+            if args.verbose:
+                print("Reconnecting NTRIP...")
+            connect_ntrip()
 
-    mqtt_client.loop_stop()  # Stop the MQTT client loop
+        try:
+            readable, _, _ = select.select([
+                client_socket,
+            ], [], [], 1.0)
+            if readable:
+                try:
+                    if client_socket not in SOURCES_DICT:
+                        print("W: unknown source", client_socket)
+                        continue
+                    topic = f"s2d/osr/{SOURCES_DICT[client_socket]}/rtcm"
+                    data = client_socket.recv(BUFFER_SIZE)
+                    if not data:
+                        raise Exception(f"E: {args.D}: Empty response")
+                    if args.verbose:
+                        print(f"P: {topic}: {len(data)} bytes")
+                    
+                    if args.topic_per_type:
+                        try:
+                            msg = RTCMReader.parse(data)
+                            print(f"Identity: {msg.identity}")
+                            mqtt_client.publich(topic, msg.serialize())
+                        except Exception as e:
+                            print(f"E: {e}")
+                    else:
+                        mqtt_client.publish(topic, data)
+                    next_beat = time.time()
+                except Exception as e:
+                    print(f"NTRIP error: {e}", file=sys.stderr)
+                    ntrip_connected = False
+                    try:
+                        client_socket.close()
+                    except Exception:
+                        pass
+                    time.sleep(retry_delay)
+            else:
+                this_beat = time.time()
+                if this_beat - next_beat > args.timeout:
+                    print(f"W: No data {args.D}, reconnecting NTRIP...")
+                    ntrip_connected = False
+                    try:
+                        client_socket.close()
+                    except Exception:
+                        pass
+                    time.sleep(retry_delay)
+            time.sleep(0.1)
+        except Exception as e:
+            print(f"Main loop error: {e}", file=sys.stderr)
+            mqtt_connected = False
+            ntrip_connected = False
+            try:
+                if client_socket:
+                    client_socket.close()
+            except Exception:
+                pass
+            try:
+                if mqtt_client:
+                    mqtt_client.loop_stop()
+            except Exception:
+                pass
+            time.sleep(retry_delay)
+
+    if mqtt_client:
+        mqtt_client.loop_stop()
 
 
 if __name__ == "__main__":
