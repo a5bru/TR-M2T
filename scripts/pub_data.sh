@@ -28,9 +28,12 @@ NTRIP_PATH="MP1"              # WITHOUT SLASH!
 
 FORMAT="NONE"
 
+PYTHON_CMD=".venv/bin/python3"
+
 # Load the .env file
-if [ -f m2t.env ]; then
-  export $(grep -v '^#' m2t.env | xargs)
+if [ -f ".env" ]; then
+  echo "Found .env"
+  export $(grep -v '^#' .env | xargs)
 fi
 
 NTRIP_PATH_ARG="$1"
@@ -50,13 +53,15 @@ fi
 #     -U "${NTRIP_USER}" -W "${NTRIP_PSWD}" \
 #     --format "${FORMAT}"
 #echo python3 n2m.py \ -H "${NTRIP_HOST}" -p $NTRIP_PORT \ -D "${NTRIP_PATH_USE}" \ -U "${NTRIP_USER}" -W "${NTRIP_PSWD}" \ -a "${MQTT_HOST}" -p $MQTT_PORT \ -n "${MQTT_USER}" -c "${MQTT_PSWD}" \ -m "${MQTT_TOPIC_USE}" --format "${FORMAT}"
-python3 n2m.py \
+$PYTHON_CMD src/trm2t/n2m.py \
      -H "${NTRIP_HOST}" -p $NTRIP_PORT \
      -D "${NTRIP_PATH_USE}" \
      -U "${NTRIP_USER}" -W "${NTRIP_PSWD}" \
      -a "${MQTT_HOST}" -p $MQTT_PORT \
      -n "${MQTT_USER}" -c "${MQTT_PSWD}" \
-     -m "${MQTT_TOPIC_USE}" --format "${FORMAT}"
+     -m "${MQTT_TOPIC_USE}" \
+     --format "${FORMAT}" \
+     --verbose
 
 #curl -v -A "Ntrip cURL" --user "${NTRIP_USER}:${NTRIP_PSWD}" http://${NTRIP_HOST}:${NTRIP_PORT}/${NTRIP_PATH_USE} --no-buffer --http0.9 --output - | \
 #        python3 pub_data.py -a "${MQTT_HOST}" -p $MQTT_PORT -m "${MQTT_TOPIC_USE}" -n "${MQTT_USER}" -c "${MQTT_PSWD}" --format "${FORMAT}"

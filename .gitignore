@@ -8,3 +8,5 @@ venv/*
 mountpoints.dat
 sourcetable.dat
 .venv
+.env
+.vscode
