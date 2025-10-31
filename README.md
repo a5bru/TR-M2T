@@ -6,7 +6,7 @@ This repository demonstrates the use of MQTT for transmitting GNSS data by lever
 
 In Order to run the example you have to define the following:
 
-1. Checkout a Linux based system (e.g. Ubuntu)
+1. Checkout a Linux based system (e.g. Ubuntu, WSL, etc.)
 2. Install Mosquitto MQTT Broker
 3. Install a MQTT Explorer (optional)
 4. Install RTKLIB

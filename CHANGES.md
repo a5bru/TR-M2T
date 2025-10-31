@@ -23,6 +23,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - ADD: rtcm parsing, not ready yet
 
+### 2025-10-31
+
+- ADD: scripts for sqlite db handling (init_db.py, add_mountpoint.py)
+- FIX: improving connection_hub.py
+
 ## Suggestion
 
 - Add Environment File for Variables
