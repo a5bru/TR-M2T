@@ -10,3 +10,4 @@ sourcetable.dat
 .venv
 .env
 .vscode
+var/mountpoints*.txt
