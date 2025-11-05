@@ -234,7 +234,7 @@ def main():
                     if client_socket not in SOURCES_DICT:
                         print("W: unknown source", client_socket)
                         continue
-                    topic = f"s2d/osr/{SOURCES_DICT[client_socket]}/rtcm"
+                    topic = f"{MQTT_PATH}/{SOURCES_DICT[client_socket]}/rtcm"
                     data = client_socket.recv(BUFFER_SIZE)
                     if not data:
                         raise Exception(f"E: {args.D}: Empty response")

@@ -22,10 +22,14 @@ import base64
 import paho.mqtt.client as mqtt
 import zmq
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 # MQTT broker settings
 MQTT_HOST = "127.0.0.1"  # Change to your broker's address
 MQTT_PORT = 1883          # Change if your broker uses a different port
-MQTT_PATH = "data"          # Change to your desired topic
+MQTT_PATH = os.environ.get("MQTT_PATH", "data")          # Change to your desired topic
 
 # MQTT authentication settings
 MQTT_USER = ""  # Change to your MQTT username

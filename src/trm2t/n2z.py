@@ -21,6 +21,10 @@ import argparse
 import base64
 import zmq
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 # Ntrip caster settings
 NTRIP_HOST = "127.0.0.1"
 NTRIP_PORT = 2101
@@ -113,7 +117,7 @@ def main():
         # Use select to wait for any socket to be ready for processing
         readable, _, _ = select.select([client_socket, ], [], [], 1.0)
         if readable:
-            topic = f"s2d/osr/{SOURCES_DICT[client_socket]}/rtcm"
+            topic = f"{MQTT_PATH}/{SOURCES_DICT[client_socket]}/rtcm"
             data = client_socket.recv(1024)
             if data:
                 # Publish received data to MQTT

@@ -14,6 +14,7 @@ import os
 import random
 
 import paho.mqtt.client as mqtt
+from dotenv import load_dotenv
 
 from urllib.parse import urlparse
 
@@ -22,7 +23,11 @@ selector = selectors.DefaultSelector()
 connections = {}
 #data_queue = queue.Queue()
 
+load_dotenv()
+
 WORKERS = int(os.environ.get("MQTT_HUB_WORKERS", "2"))
+
+MQTT_PATH = os.environ.get("MQTT_PATH", "s2d/osr")
 
 ZMQ_PULL_PORT = int(os.environ.get("ZMQ_PULL_PORT", "6969"))
 
@@ -176,7 +181,7 @@ def worker(w_id: int, url: str):
             if conn_id == connections[conn_sock]["id"]:
                 o2 = urlparse(connections[conn_sock]["url"])
                 p2 = o2.path[1:]
-                topic = f"s2d/osr/{p2}/rtcm"
+                topic = f"{MQTT_PATH}/{p2}/rtcm"
                 #assert len(data) > 0, f"E: {topic}: Empty response"
                 if len(data) > 0:
                     # Publish received data to MQTT

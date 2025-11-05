@@ -29,6 +29,7 @@ ZMQ_PULL_PORT = int(os.environ.get("ZMQ_PULL_PORT", "6969"))
 MAX_INACTIVE_COUNT = int(os.environ.get("HUB_MAX_INACTIVE_COUNT", "10"))
 DATABASE = os.environ.get("TRM2T_DATABSE", "mountpoints.db")
 PARSE_RAW = os.environ.get("TRM2T_PARSE_RAW", False)
+MQTT_TOPIC_PREFIX = os.environ.get("MQTT_PATH", "s2d/osr")
 
 context = zmq.Context()
 selector = selectors.DefaultSelector()
@@ -361,7 +362,7 @@ def worker(name: str, w_id: int, url: str):
                 url = connections[fd].url
                 o2 = urlparse(url)
                 p2 = o2.path[1:]
-                topic = f"s2d/osr/{p2}/rtcm"
+                topic = f"{MQTT_TOPIC_PREFIX}/{p2}/rtcm"
                 connections[fd]._buffer.write(data)
                 connections[fd]._buffer.seek(0)
 
