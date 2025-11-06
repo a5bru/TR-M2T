@@ -26,6 +26,89 @@ from dotenv import load_dotenv
 from pyrtcm import RTCMReader
 
 BUFFER_SIZE = 1024 * 2
+SOURCES_DICT = {}
+
+PRE_RTCM = b"\xd3"
+PRE_UBX = [b"\xb5", b"\x62"]
+PRE_SBF = [b"\x24", b"\x40"]
+
+ALLOWED_MESSAGES_RTCM = [
+    1001,
+    1002,
+    1003,
+    1005,
+    1006,
+    1007,
+    1008,
+    1009,
+    1010,
+    1011,
+    1004,
+    1012,
+    1013,
+    1019,
+    1020,
+    1029,
+    1032,
+    1033,
+    1034,
+    1035,
+    1041,
+    1042,
+    1044,
+    1045,
+    1046,
+    1071,
+    1081,
+    1091,
+    1101,
+    1111,
+    1121,
+    1131,
+    1072,
+    1082,
+    1092,
+    1102,
+    1112,
+    1122,
+    1132,
+    1073,
+    1083,
+    1093,
+    1103,
+    1113,
+    1123,
+    1133,
+    1074,
+    1084,
+    1094,
+    1104,
+    1114,
+    1124,
+    1134,
+    1075,
+    1085,
+    1095,
+    1105,
+    1115,
+    1125,
+    1135,
+    1076,
+    1086,
+    1096,
+    1106,
+    1116,
+    1126,
+    1136,
+    1077,
+    1087,
+    1097,
+    1107,
+    1117,
+    1127,
+    1137,
+    1230,
+]
 
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 ENV_PATH = os.path.join(ROOT_DIR, ".env")
@@ -127,10 +210,6 @@ def generate_random_string(length):
     characters = string.ascii_letters + string.digits
     random_string = "".join(random.choice(characters) for _ in range(length))
     return random_string
-
-
-SOURCES_FILE = "sources.txt"
-SOURCES_DICT = {}
 
 
 def create_tcp_client(client_path, auth):
