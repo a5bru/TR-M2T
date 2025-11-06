@@ -25,7 +25,7 @@ import base64
 from dotenv import load_dotenv
 from pyrtcm import RTCMReader
 
-BUFFER_SIZE = 1024*2
+BUFFER_SIZE = 1024 * 2
 
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 ENV_PATH = os.path.join(ROOT_DIR, ".env")
@@ -40,7 +40,7 @@ MQTT_HOST = os.environ.get("MQTT_HOST", "127.0.0.1")
 # Change if your broker uses a different port
 MQTT_PORT = int(os.environ.get("MQTT_PORT", 1883))
 # Change to your desired topic path
-MQTT_PATH = os.environ.get("MQTT_PATH", "data")
+MQTT_PATH = os.environ.get("MQTT_PATH", "s2d/osr")
 
 # MQTT authentication settings
 # Change to your MQTT username
@@ -67,23 +67,41 @@ FMT_CHOICES = [
     FMT_NONE,
 ]
 
+SOURCE_MODES = ["NTRIP", "TCP"]
+
 parser = argparse.ArgumentParser()
 # Settings for Ntrip
+parser.add_argument(
+    "-M",
+    default="NTRIP",
+    choices=SOURCE_MODES,
+    help="Set the source mode (TCP or NTRIP)",
+)
 parser.add_argument("-H", default=NTRIP_HOST, type=str, help="Set the Ntrip host")
 parser.add_argument("-P", default=NTRIP_PORT, type=int, help="Set the Ntrip port")
-parser.add_argument("-D", default=NTRIP_PATH, type=str, help="Input Mountpoint")
+parser.add_argument("-D", default=NTRIP_PATH, type=str, help="Set the Ntrip Mountpoint")
 parser.add_argument("-U", default=NTRIP_USER, type=str, help="Set the Ntrip user")
-parser.add_argument("-W", default=NTRIP_PSWD, type=str, help="Set the Ntrip password")
+parser.add_argument(
+    "-W",
+    default=NTRIP_PSWD,
+    type=str,
+    help="Set the Ntrip password",
+)
 # Settings for MQTT
 parser.add_argument("-a", default=MQTT_HOST, type=str, help="Set the MQTT host")
 parser.add_argument("-p", default=MQTT_PORT, type=int, help="Set the MQTT port")
 parser.add_argument(
-    "-m", default=MQTT_PATH, type=str, help="Set the root topic for the data"
+    "-m",
+    default=MQTT_PATH,
+    type=str,
+    help="Set the MQTT root topic",
 )
 parser.add_argument("-n", default=MQTT_USER, type=str, help="Set the MQTT username")
-parser.add_argument("-c", default=MQTT_PSWD, type=str, help="Set the MQTTpassword")
+parser.add_argument("-c", default=MQTT_PSWD, type=str, help="Set the MQTT password")
 # Settings for the Format
-parser.add_argument("--timeout", default=15, type=int, help="Timeout with no data")
+parser.add_argument(
+    "--timeout", default=15, type=int, help="Set the timeout for data receiving"
+)
 parser.add_argument(
     "--format",
     default=FMT_NONE,
@@ -99,7 +117,7 @@ parser.add_argument(
     "--filter-allowed", action="store_true", help="Only publish allowed messages."
 )
 parser.add_argument(
-    "--verbose", "-v", action="store_true", help="Enable verbose output"
+    "-v", "--verbose", action="store_true", help="Enable verbose output"
 )
 
 args = parser.parse_args()
@@ -129,33 +147,37 @@ def create_tcp_client(client_path, auth):
         # This is expected for non-blocking sockets
         pass
 
-    try:
-        request = f"GET /{client_path} HTTP/1.0\r\n"
-        request += "User-Agent: Ntrip N2Mqtt/v0.1\r\n"
-        request += "Connection: close\r\n"
-        request += f"Host: {args.H}\r\n"
-        request += f"Authorization: Basic {auth}\r\n"
-        request += "\r\n"
-        client_socket.sendall(request.encode())
-        seconds = 4.0
-        readable, _, _ = select.select(
-            [
-                client_socket,
-            ],
-            [],
-            [],
-            seconds,
-        )
-        if not readable:
-            assert False, f"E: {client_path}: No Response within {seconds} secs."
-        data = client_socket.recv(BUFFER_SIZE)
-        assert b"200" in data, f"E: {client_path}: {data[:20].decode()}"
-        assert b"SOURCETABLE" not in data, f"E: {client_path}: not available"
-        if args.verbose:
-            print(f"C: {client_path}: Connected")
-    except AssertionError as e:
-        print(e, file=sys.stderr)
-        return -1
+    if args.M == "NTRIP":
+        try:
+            request = f"GET /{client_path} HTTP/1.0\r\n"
+            request += "User-Agent: Ntrip N2Mqtt/v0.1\r\n"
+            request += "Connection: close\r\n"
+            request += f"Host: {args.H}\r\n"
+            request += f"Authorization: Basic {auth}\r\n"
+            request += "\r\n"
+            client_socket.sendall(request.encode())
+            seconds = 4.0
+            readable, _, _ = select.select(
+                [
+                    client_socket,
+                ],
+                [],
+                [],
+                seconds,
+            )
+            if not readable:
+                assert False, f"E: {client_path}: No Response within {seconds} secs."
+            data = client_socket.recv(BUFFER_SIZE)
+            assert b"200" in data, f"E: {client_path}: {data[:20].decode()}"
+            assert b"SOURCETABLE" not in data, f"E: {client_path}: not available"
+            if args.verbose:
+                print(f"C: {client_path}: Connected")
+        except AssertionError as e:
+            print(e, file=sys.stderr)
+            return -1
+    elif args.M == "TCP":
+        # No special handshake needed for plain TCP
+        pass
 
     SOURCES_DICT[client_socket] = client_path
     client_socket.setblocking(0)  # Set socket to non-blocking
@@ -226,9 +248,14 @@ def main():
             connect_ntrip()
 
         try:
-            readable, _, _ = select.select([
-                client_socket,
-            ], [], [], 1.0)
+            readable, _, _ = select.select(
+                [
+                    client_socket,
+                ],
+                [],
+                [],
+                1.0,
+            )
             if readable:
                 try:
                     if client_socket not in SOURCES_DICT:
@@ -240,7 +267,7 @@ def main():
                         raise Exception(f"E: {args.D}: Empty response")
                     if args.verbose:
                         print(f"P: {topic}: {len(data)} bytes")
-                    
+
                     if args.topic_per_type:
                         try:
                             msg = RTCMReader.parse(data)

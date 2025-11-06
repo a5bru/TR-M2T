@@ -12,11 +12,17 @@ import os
 import queue
 import random
 import io
+import logging
 
 from urllib.parse import urlparse
 
 import zmq
 import paho.mqtt.client as mqtt
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("HUB")
+
 import setproctitle
 
 from dotenv import load_dotenv
@@ -42,11 +48,20 @@ enable_queue = queue.Queue()
 
 
 class DataConnection:
-    def __init__(self, idx: int, url: str, socket: socket.socket, active: bool = True):
+    def __init__(
+        self,
+        idx: int,
+        url: str,
+        socket: socket.socket,
+        active: bool = True,
+        timeout: int = 15,
+    ):
         self.idx = idx
         self.url = url
         self.active = active
         self.socket = socket
+        self._last_active = time.time()
+        self.timeout = timeout
         self._buffer = io.BytesIO()
 
 
@@ -143,18 +158,16 @@ def create_tcp_client(url: str, timeout: int = 15):
                 raise ValueError(f"E: {path}: Unsupported scheme {o.scheme}")
             return client_socket
         except Exception as e:
-            print(
-                f"TCP connection error (attempt {attempt+1}/{max_retries}): {e}",
-                file=sys.stderr,
+            logger.error(
+                f"TCP connection error (attempt {attempt+1}/{max_retries}): {e}"
             )
             try:
                 client_socket.close()
             except Exception:
                 pass
             time.sleep(retry_delay)
-    print(
-        f"Failed to connect to TCP server after {max_retries} attempts ({path}).",
-        file=sys.stderr,
+    logger.error(
+        f"Failed to connect to TCP server after {max_retries} attempts ({path})."
     )
     return None
 
@@ -172,13 +185,13 @@ def fetch_active_mountpoints():
 
 def creation_thread(id: int, connection_string: str, timeout: int = 15):
     o = urlparse(connection_string)
-    print(f"I: {o.path}: Opening connection (fd={id})")
+    logger.info(f"Creating connection for {o.path} (fd={id})")
     conn = create_tcp_client(connection_string, timeout=timeout)
     if conn is not None:
         fd = conn.fileno()
         selector.register(conn, selectors.EVENT_READ)
         connections[fd] = DataConnection(
-            idx=id, url=connection_string, socket=conn, active=True
+            idx=id, url=connection_string, socket=conn, active=True, timeout=timeout
         )
         if o.path in inactive:
             inactive.pop(o.path)
@@ -196,11 +209,11 @@ def creation_thread(id: int, connection_string: str, timeout: int = 15):
 def check_mountpoints(name: str, sock):
 
     setproctitle.setproctitle(name)
-    print(f"Thread {name}")
+    logger.info(f"Thread {name}")
 
     while not run_event.is_set():
 
-        print("Check for active mountpoints")
+        logger.info("Check for active mountpoints")
         active_mountpoints = fetch_active_mountpoints()
         active_ids = set(mp[0] for mp in active_mountpoints)
         found_inactive = False
@@ -210,7 +223,7 @@ def check_mountpoints(name: str, sock):
             if connections[fd].idx not in active_ids:
                 enable_queue.put_nowait(int(fd))
                 o = urlparse(connections[fd].url)
-                print(f"I: {o.path}: Closing connection")
+                logger.info(f"Closing connection for {o.path} (fd={fd})")
                 found_inactive = True
 
         if found_inactive:
@@ -245,7 +258,7 @@ def check_mountpoints(name: str, sock):
 def handle_events(name: str, sock):
 
     setproctitle.setproctitle(name)
-    print(f"Thread {name}")
+    logger.info(f"Thread {name}")
 
     sender = context.socket(zmq.PUSH)
     sender.bind(f"tcp://*:{ZMQ_PULL_PORT}")
@@ -275,6 +288,7 @@ def handle_events(name: str, sock):
             else:
                 fd = conn.fileno()
                 if data:
+                    connections[fd]._last_active = time.time()
                     sender.send_pyobj((fd, data))
                 else:
                     selector.unregister(conn)
@@ -283,11 +297,24 @@ def handle_events(name: str, sock):
                         connections[fd].active = False
                         del connections[fd]
 
+        # Clean up inactive connections
+        current_time = time.time()
+        for fd in list(connections.keys()):
+            if (
+                current_time - connections[fd]._last_active
+                > connections[fd].timeout * 3
+            ):  # multiple times of timeout
+                logger.info(f"Closing inactive connection (fd={fd})")
+                selector.unregister(connections[fd].socket)
+                connections[fd].socket.close()
+                connections[fd].active = False
+                del connections[fd]
+
 
 def worker(name: str, w_id: int, url: str):
 
     setproctitle.setproctitle(name)
-    print(f"Thread {name}")
+    logger.info(f"Thread {name}")
 
     receiver = context.socket(zmq.PULL)
     receiver.connect(f"tcp://localhost:{ZMQ_PULL_PORT}")
@@ -307,24 +334,24 @@ def worker(name: str, w_id: int, url: str):
 
     def on_connect(client, userdata, flags, rc, properties=None):
         if rc == 0:
-            print(f"MQTT client {mqtt_client_id} connected.")
+            logger.info(f"MQTT client {mqtt_client_id} connected.")
             mqtt_connected.set()
         else:
-            print(f"MQTT client {mqtt_client_id} failed to connect, rc={rc}")
+            logger.error(f"MQTT client {mqtt_client_id} failed to connect, rc={rc}")
             mqtt_connected.clear()
 
     def on_disconnect(client, userdata, rc, properties=None, reason_code=None):
-        print(f"MQTT client {mqtt_client_id} disconnected (rc={rc})")
+        logger.info(f"MQTT client {mqtt_client_id} disconnected (rc={rc})")
         mqtt_connected.clear()
         if not mqtt_should_stop.is_set():
             # Try to reconnect in background
             while not mqtt_should_stop.is_set():
                 try:
-                    print(f"MQTT client {mqtt_client_id} attempting reconnect...")
+                    logger.info(f"MQTT client {mqtt_client_id} attempting reconnect...")
                     client.reconnect()
                     return
                 except Exception as e:
-                    print(f"MQTT reconnect failed: {e}")
+                    logger.error(f"MQTT reconnect failed: {e}")
                     time.sleep(2)
 
     mqtt_client.on_connect = on_connect
@@ -336,24 +363,24 @@ def worker(name: str, w_id: int, url: str):
             mqtt_client.connect(o.hostname, o.port)
             break
         except Exception as e:
-            print(f"MQTT initial connect failed (attempt {attempt+1}/5): {e}")
+            logger.error(f"MQTT initial connect failed (attempt {attempt+1}/5): {e}")
             time.sleep(2)
     mqtt_client.loop_start()  # Start the MQTT client loop
 
     # Wait for connection
     if not mqtt_connected.wait(timeout=10):
-        print(
+        logger.warning(
             f"MQTT client {mqtt_client_id} could not connect after 10s, continuing anyway."
         )
 
-    print(f"Started MQTT client {mqtt_client_id}")
+    logger.info(f"Started MQTT client {mqtt_client_id}")
 
     while not run_event.is_set():
         try:
             fd, data = receiver.recv_pyobj()
-            # print(f"Receiving data for fd={fd}, worker {w_id}, bytes={len(data)}")
+            # logger.debug(f"Receiving data for fd={fd}, worker {w_id}, bytes={len(data)}")
         except Exception as e:
-            print(f"ZMQ receive error: {e}")
+            logger.error(f"ZMQ receive error: {e}")
             time.sleep(1)
             continue
 
@@ -373,7 +400,6 @@ def worker(name: str, w_id: int, url: str):
                         chunk = connections[fd]._buffer.read(1)
                         while (chunk != b"\xd3") and keep_reading:
                             chunk = connections[fd]._buffer.read(1)
-                        print("RTCM")
                         length_data = connections[fd]._buffer.read(2)
                         length = (length_data[0] << 8) + length_data[1]
                         if len(connections[fd]._buffer.getvalue()) < length:
@@ -390,9 +416,12 @@ def worker(name: str, w_id: int, url: str):
                         topicM = f"{topic}/{message_number}"
                         try:
                             if mqtt_connected.is_set():
-                                mqtt_client.publish(topicM, data)
+                                parsed_data = (
+                                    b"\xd3" + length_data + packet_data + crc24_data
+                                )
+                                mqtt_client.publish(topicM, parsed_data)
                         except Exception as e:
-                            print(f"MQTT publish error: {e}")
+                            logger.error(f"MQTT publish error: {e}")
                         # check if puffer is empty
                         if connections[fd]._buffer.tell() == len(
                             connections[fd]._buffer.getvalue()
@@ -404,11 +433,11 @@ def worker(name: str, w_id: int, url: str):
                             if mqtt_connected.is_set():
                                 mqtt_client.publish(topic, data)
                         except Exception as e:
-                            print(f"MQTT publish error: {e}")
+                            logger.error(f"MQTT publish error: {e}")
 
             except Exception as e:
                 traceback.print_exc()
-                print(e)
+                logger.error(f"Error: {e}")
 
         time.sleep(0.000000001)
 
@@ -426,7 +455,7 @@ def main(name: str):
     MQTT_USER = os.environ.get("MQTT_USER", "user")
     MQTT_PSWD = os.environ.get("MQTT_PSWD", "pswd")
     mqtt_url = f"mqtt://{MQTT_USER}:{MQTT_PSWD}@{MQTT_HOST}:{MQTT_PORT}"
-    print(f"MQTT_URL: {mqtt_url}")
+    logger.info(f"MQTT_URL: {mqtt_url}")
     for i in range(WORKERS):
         t = threading.Thread(
             target=worker,
@@ -463,7 +492,7 @@ def main(name: str):
     ev_thread.start()
 
     setproctitle.setproctitle(name)
-    print(f"Thread {name}")
+    logger.info(f"Thread {name}")
 
     while not run_event.is_set():
         time.sleep(1)
