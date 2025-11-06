@@ -23,7 +23,6 @@ import argparse
 import paho.mqtt.client as mqtt
 import base64
 from dotenv import load_dotenv
-from pyrtcm import RTCMReader
 
 BUFFER_SIZE = 1024 * 2
 SOURCES_DICT = {}
@@ -349,9 +348,7 @@ def main():
 
                     if args.topic_per_type:
                         try:
-                            msg = RTCMReader.parse(data)
-                            print(f"Identity: {msg.identity}")
-                            mqtt_client.publich(topic, msg.serialize())
+                            mqtt_client.publish(topic, data)
                         except Exception as e:
                             print(f"E: {e}")
                     else:
