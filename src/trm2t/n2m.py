@@ -24,12 +24,14 @@ import paho.mqtt.client as mqtt
 import base64
 import logging
 from dotenv import load_dotenv
+
 from pyrtcm import RTCMReader
 
 from trm2t import config
 from . import config
 
 logger = logging.getLogger(__name__)
+from pyrtcm import RTCMReader
 
 BUFFER_SIZE = 1024*2
 
@@ -59,13 +61,26 @@ FMT_CHOICES = [
     FMT_NONE,
 ]
 
+SOURCE_MODES = ["NTRIP", "TCP"]
+
 parser = argparse.ArgumentParser()
 # Settings for Ntrip
+parser.add_argument(
+    "-M",
+    default="NTRIP",
+    choices=SOURCE_MODES,
+    help="Set the source mode (TCP or NTRIP)",
+)
 parser.add_argument("-H", default=NTRIP_HOST, type=str, help="Set the Ntrip host")
 parser.add_argument("-P", default=NTRIP_PORT, type=int, help="Set the Ntrip port")
-parser.add_argument("-D", default=NTRIP_PATH, type=str, help="Input Mountpoint")
+parser.add_argument("-D", default=NTRIP_PATH, type=str, help="Set the Ntrip Mountpoint")
 parser.add_argument("-U", default=NTRIP_USER, type=str, help="Set the Ntrip user")
-parser.add_argument("-W", default=NTRIP_PSWD, type=str, help="Set the Ntrip password")
+parser.add_argument(
+    "-W",
+    default=NTRIP_PSWD,
+    type=str,
+    help="Set the Ntrip password",
+)
 # Settings for MQTT
 parser.add_argument("-a", default=config.MQTT_HOST, type=str, help="Set the MQTT host")
 parser.add_argument("-p", default=config.MQTT_PORT, type=int, help="Set the MQTT port")
@@ -75,7 +90,9 @@ parser.add_argument(
 parser.add_argument("-n", default=config.MQTT_USER, type=str, help="Set the MQTT username")
 parser.add_argument("-c", default=config.MQTT_PSWD, type=str, help="Set the MQTTpassword")
 # Settings for the Format
-parser.add_argument("--timeout", default=15, type=int, help="Timeout with no data")
+parser.add_argument(
+    "--timeout", default=15, type=int, help="Set the timeout for data receiving"
+)
 parser.add_argument(
     "--format",
     default=FMT_NONE,
@@ -91,7 +108,7 @@ parser.add_argument(
     "--filter-allowed", action="store_true", help="Only publish allowed messages."
 )
 parser.add_argument(
-    "--verbose", "-v", action="store_true", help="Enable verbose output"
+    "-v", "--verbose", action="store_true", help="Enable verbose output"
 )
 
 args = parser.parse_args()
@@ -101,10 +118,6 @@ def generate_random_string(length):
     characters = string.ascii_letters + string.digits
     random_string = "".join(random.choice(characters) for _ in range(length))
     return random_string
-
-
-SOURCES_FILE = "sources.txt"
-SOURCES_DICT = {}
 
 
 def create_tcp_client(client_path, auth):
@@ -217,9 +230,14 @@ def main():
             connect_ntrip()
 
         try:
-            readable, _, _ = select.select([
-                client_socket,
-            ], [], [], 1.0)
+            readable, _, _ = select.select(
+                [
+                    client_socket,
+                ],
+                [],
+                [],
+                1.0,
+            )
             if readable:
                 try:
                     if client_socket not in SOURCES_DICT:
