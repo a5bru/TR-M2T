@@ -15,13 +15,11 @@
 import sys
 import argparse
 import paho.mqtt.client as mqtt
+import logging
 
-# Configuration
-BROKER_HOST = "broker.example.com"  # Replace with your broker's address
-BROKER_PORT = 1883                     # Default MQTT port (or 8883 for TLS)
-USERNAME = "your_username"             # Replace with your username
-PASSWORD = "your_password"             # Replace with your password
-TOPIC = "example/topic"                # Replace with the topic you want to subscribe to
+from . import config
+
+logger = logging.getLogger(__name__)
 
 FMT_RTCM = "RTCM"
 FMT_SBF = "SBF"
@@ -35,11 +33,11 @@ FMT_CHOICES = [
 ]
 
 parser = argparse.ArgumentParser()
-parser.add_argument("-a", default=BROKER_HOST, type=str, help="Set the host of the MQTT broker")
-parser.add_argument("-p", default=BROKER_PORT, type=int, help="Set the port of the MQTT broker")
-parser.add_argument("-m", default=TOPIC, type=str, help="Set the root topic for the data")
-parser.add_argument("-n", default=USERNAME, type=str, help="Set the username")
-parser.add_argument("-c", default=PASSWORD, type=str, help="Set the password")
+parser.add_argument("-a", default=config.MQTT_HOST, type=str, help="Set the host of the MQTT broker")
+parser.add_argument("-p", default=config.MQTT_PORT, type=int, help="Set the port of the MQTT broker")
+parser.add_argument("-m", default=config.MQTT_TOPIC_PREFIX, type=str, help="Set the root topic for the data")
+parser.add_argument("-n", default=config.MQTT_USER, type=str, help="Set the username")
+parser.add_argument("-c", default=config.MQTT_PSWD, type=str, help="Set the password")
 parser.add_argument("--format", default=FMT_NONE, choices=FMT_CHOICES, help="Define the used format for parsing")
 parser.add_argument("--topic-per-type", action="store_true", help="Publish each message type under a special topic")
 
@@ -48,15 +46,15 @@ args = parser.parse_args()
 # Callback for when the client connects to the broker
 def on_connect(client, userdata, flags, rc):
     if rc == 0:
-        print("Connected to MQTT broker successfully!")
-        print(f"Subscribing to topic: {args.m}")
+        logger.info("Connected to MQTT broker successfully!")
+        logger.info(f"Subscribing to topic: {args.m}")
         client.subscribe(args.m)
     else:
-        print(f"Failed to connect, return code {rc}")
+        logger.error(f"Failed to connect, return code {rc}")
 
 # Callback for when a message is received
 def on_message(client, userdata, msg):
-    #print(f"Message received on topic {msg.topic}: {msg.payload.decode()}")
+    #logger.debug(f"Message received on topic {msg.topic}: {msg.payload.decode()}")
     sys.stdout.buffer.write(msg.payload)
     sys.stdout.buffer.flush()
 
@@ -73,14 +71,14 @@ client.on_message = on_message
 
 try:
     # Connect to the broker
-    print(f"Connecting to broker at {args.a}:{args.p}")
+    logger.info(f"Connecting to broker at {args.a}:{args.p}")
     client.connect(args.a, args.p, 60)
 
     # Start the network loop
     client.loop_forever()
 except KeyboardInterrupt:
-    print("\nDisconnecting...")
+    logger.info("Disconnecting...")
     client.disconnect()
 except Exception as e:
-    print(f"An error occurred: {e}")
+    logger.error(f"An error occurred: {e}")
 

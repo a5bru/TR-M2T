@@ -2,11 +2,14 @@
 import time
 import traceback
 import pymongo
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 # Function to handle changes
 def handle_change(change):
-    print("Change detected:", change)
+    logger.info("Change detected: %s", change)
 
 
 def run():
@@ -23,7 +26,7 @@ def run():
                 handle_change(change)
 
     except Exception as e:
-        print(f"Error occured: {e}")
+        logger.error("Error occurred: %s", e)
 
 
 if __name__ == "__main__":

@@ -1,8 +1,8 @@
 # TR-M2T
 
-Protocol Transformer for MQTT and TCP
+GNSS Data Protocol Transformer for NTRIP, MQTT, and TCP
 
-This repository demonstrates the use of MQTT for transmitting GNSS data by leveraging a protocol transformer. The project integrates Python with the Paho MQTT library, Mosquitto broker, and RTKLIB to facilitate seamless data conversion and transmission. It serves as a practical example for developers interested in combining MQTT with GNSS workflows for real-time applications.
+This repository demonstrates the use of MQTT for transmitting GNSS data by leveraging a protocol transformer capable of handling NTRIP, MQTT, and TCP protocols. The project integrates Python with the Paho MQTT library, Mosquitto broker, and RTKLIB to facilitate seamless data conversion and transmission. It serves as a practical example for developers interested in combining these protocols with GNSS workflows for real-time applications.
 
 In Order to run the example you have to define the following:
 
@@ -13,6 +13,21 @@ In Order to run the example you have to define the following:
 5. Define a data source (RTCM e.g. over TCP or Ntrip)
 6. Start the Provider-Script (pub_data.sh)
 7. Start the Consumer-Script (sub_data.sh)
+
+## Running the Application
+
+The main application can be started using the `run.py` script. Ensure you have all dependencies installed (preferably in a virtual environment).
+
+```bash
+python run.py
+```
+
+This will start the core `trm2t` hub, which manages connections and data transformation.
+
+For specific data publishing and subscribing examples, you can still use the scripts in the `scripts/` directory:
+
+*   `scripts/pub_data.sh`: Publishes example data.
+*   `scripts/sub_data.sh`: Subscribes to example data.
 
 Further descriptions and usage instructions can be found in the repository's [Wiki](https://github.com/a5bru/TR-M2T/wiki).
 

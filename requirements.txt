@@ -2,3 +2,6 @@ paho-mqtt
 zmq
 setproctitle
 dotenv
+pyrtcm
+pyserial
+prometheus_client

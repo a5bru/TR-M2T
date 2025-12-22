@@ -18,15 +18,11 @@ import select
 import time
 import paho.mqtt.client as mqtt
 import argparse
+import logging
 
-# MQTT broker settings
-BROKER_HOST = "127.0.0.1"  # Change to your broker's address
-BROKER_PORT = 1883          # Change if your broker uses a different port
-TOPIC = "data"          # Change to your desired topic
+from . import config
 
-# MQTT authentication settings
-USERNAME = ""  # Change to your MQTT username
-PASSWORD = ""  # Change to your MQTT password
+logger = logging.getLogger(__name__)
 
 FMT_RTCM = "RTCM"
 FMT_SBF = "SBF"
@@ -40,11 +36,11 @@ FMT_CHOICES = [
 ]
 
 parser = argparse.ArgumentParser()
-parser.add_argument("-a", default=BROKER_HOST, type=str, help="Set the host of the MQTT broker")
-parser.add_argument("-p", default=BROKER_PORT, type=int, help="Set the port of the MQTT broker")
-parser.add_argument("-m", default=TOPIC, type=str, help="Set the root topic for the data")
-parser.add_argument("-n", default=USERNAME, type=str, help="Set the username")
-parser.add_argument("-c", default=PASSWORD, type=str, help="Set the password")
+parser.add_argument("-a", default=config.MQTT_HOST, type=str, help="Set the host of the MQTT broker")
+parser.add_argument("-p", default=config.MQTT_PORT, type=int, help="Set the port of the MQTT broker")
+parser.add_argument("-m", default=config.MQTT_TOPIC_PREFIX, type=str, help="Set the root topic for the data")
+parser.add_argument("-n", default=config.MQTT_USER, type=str, help="Set the username")
+parser.add_argument("-c", default=config.MQTT_PSWD, type=str, help="Set the password")
 parser.add_argument("--format", default=FMT_NONE, choices=FMT_CHOICES, help="Define the used format for parsing")
 parser.add_argument("--topic-per-type", action="store_true", help="Publish each message type under a special topic")
 parser.add_argument("--filter-allowed", action="store_true", help="Only publish allowed messages.")
@@ -135,6 +131,7 @@ try:
             # Find Preamble byte x40
             data = sys.stdin.buffer.read(1)
             if data != PRE_SBF[1]:
+                logger.warning("wrong SBF preamble byte")
                 continue
             # Message Checksum
             crc_data = sys.stdin.buffer.read(2)
@@ -144,7 +141,7 @@ try:
             length_data = sys.stdin.buffer.read(2)
             length = (length_data[1] << 8) + length_data[0]
             if length % 4 != 0:
-                print("wrong length", length)
+                logger.warning("wrong length %s", length)
                 continue
             # Read the payload
             payload_data = sys.stdin.buffer.read(length)
@@ -162,6 +159,7 @@ try:
             # Find Preamble byte x62
             data = sys.stdin.buffer.read(1)
             if data != PRE_UBX[1]:
+                logger.warning("wrong UBX preamble byte")
                 continue
             # Message Class
             class_data = sys.stdin.buffer.read(1)
@@ -191,12 +189,12 @@ try:
         # Publish the parsed Message to MQTT
         if data:
             client.publish(topic, data)
-            print("publish", args.format, topic, len(data))
+            logger.info("publish %s %s %s", args.format, topic, len(data))
 
         time.sleep(0.001)
 
 except KeyboardInterrupt:
-    print("Interrupted by user")
+    logger.info("Interrupted by user")
 
 finally:
     # Disconnect from the broker
