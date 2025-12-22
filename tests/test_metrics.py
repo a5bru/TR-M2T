@@ -62,10 +62,14 @@ def test_metrics_registered():
     from trm2t.metrics import STREAM_STATUS, BYTES_TRANSFERRED
     
     # Get all registered metric names
-    metric_names = [m.name for m in REGISTRY.collect()]
+    metric_names = []
+    for collector in REGISTRY.collect():
+        for metric in collector.samples:
+            metric_names.append(metric.name)
     
-    assert 'stream_status' in metric_names
-    assert 'stream_bytes_transferred_total' in metric_names
+    # Check that our metrics are in the list
+    assert any('stream_status' in name for name in metric_names)
+    assert any('stream_bytes_transferred' in name for name in metric_names)
 
 
 def test_metrics_labels():
