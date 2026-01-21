@@ -1,0 +1,16 @@
+[Unit]
+Description=TR-M2T hub (user service)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/user/Documents/TR-M2T
+ExecStart=/home/user/Documents/TR-M2T/.venv/bin/python /home/user/Documents/TR-M2T/run.py
+EnvironmentFile=-/home/user/Documents/TR-M2T/.env
+Environment=PYTHONUNBUFFERED=1
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

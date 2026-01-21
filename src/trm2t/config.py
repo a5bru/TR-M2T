@@ -1,3 +1,11 @@
+"""
+Configuration module for TR-M2T (NTRIP to MQTT hub).
+
+This module loads environment variables and provides centralized configuration
+constants for the application including database, MQTT, hub, worker, and
+Prometheus settings.
+"""
+
 import os
 import logging
 from dotenv import load_dotenv
@@ -26,7 +34,7 @@ HUB_CREATION_LOADERS = int(os.environ.get("HUB_CREATION_LOADERS", "8"))
 
 # Worker
 MQTT_TOPIC_PREFIX = os.environ.get("MQTT_PATH", "s2d/osr")
-PARSE_RAW = os.environ.get("TRM2T_PARSE_RAW", False)
+PARSE_RAW = True if os.environ.get("TRM2T_PARSE_RAW", "false").strip().lower() in ["yes", "true", "1"] else False
 
 # MQTT
 MQTT_HOST = os.environ.get("MQTT_HOST", "localhost")

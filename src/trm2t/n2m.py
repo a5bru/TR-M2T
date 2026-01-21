@@ -1,5 +1,13 @@
 #!/usr/bin/python3
 
+"""
+NTRIP to MQTT publisher module.
+
+This script subscribes to NTRIP data streams and publishes them to an MQTT broker.
+Supports multiple output formats (RTCM, SBF, UBX) and can route messages to different
+MQTT topics based on message type.
+"""
+
 # DISCLAIMER:
 # This code is provided "as is" without any warranties or guarantees of any kind. Use it at your
 # own risk. The author is not responsible for any damage or loss that may occur through the use
@@ -23,6 +31,7 @@ import argparse
 import paho.mqtt.client as mqtt
 import base64
 import logging
+from typing import Optional, Dict, Any
 from dotenv import load_dotenv
 
 from pyrtcm import RTCMReader
@@ -114,13 +123,35 @@ parser.add_argument(
 args = parser.parse_args()
 
 
-def generate_random_string(length):
+def generate_random_string(length: int) -> str:
+    """
+    Generate a random alphanumeric string.
+
+    Args:
+        length: The desired length of the random string.
+
+    Returns:
+        A random string of the specified length containing letters and digits.
+    """
     characters = string.ascii_letters + string.digits
     random_string = "".join(random.choice(characters) for _ in range(length))
     return random_string
 
 
-def create_tcp_client(client_path, auth):
+def create_tcp_client(client_path: str, auth: str) -> int:
+    """
+    Create and configure a TCP client connection to an NTRIP caster.
+
+    Establishes a connection to an NTRIP server and sends an authenticated request
+    for a specific mountpoint. Updates the SOURCES_DICT with the connection.
+
+    Args:
+        client_path: The NTRIP mountpoint path.
+        auth: Base64-encoded authentication string (user:pass).
+
+    Returns:
+        The connected socket object, or -1 if connection failed.
+    """
     # Create a TCP socket
     client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server_address = (args.H, args.P)  # Replace with your server's IP and port

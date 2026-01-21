@@ -8,10 +8,12 @@ from trm2t.connection import DataConnection, create_tcp_client
 def test_data_connection_creation():
     """Test DataConnection object creation."""
     mock_socket = Mock(spec=socket.socket)
-    conn = DataConnection(1, "ntrip://user:pass@host:2101/MOUNT1", mock_socket, active=True)
+    conn = DataConnection(1, "ntrip://user:pass@host:2101/MOUNT1", mock_socket, name="MOUNT1", timeout=15, active=True)
     
     assert conn.idx == 1
     assert conn.url == "ntrip://user:pass@host:2101/MOUNT1"
+    assert conn.name == "MOUNT1"
+    assert conn.timeout == 15
     assert conn.active is True
     assert conn.socket == mock_socket
     assert conn._buffer is not None
@@ -23,6 +25,8 @@ def test_data_connection_default_active():
     conn = DataConnection(1, "ntrip://user:pass@host:2101/MOUNT1", mock_socket)
     
     assert conn.active is True
+    assert conn.name == ""
+    assert conn.timeout == 15
 
 
 @patch('socket.socket')

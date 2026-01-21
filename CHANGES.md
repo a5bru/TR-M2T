@@ -28,6 +28,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - ADD: scripts for sqlite db handling (init_db.py, add_mountpoint.py)
 - FIX: improving connection_hub.py
 
+### 2026-01-21
+
+- CHG: README
+- CHG: Docstrings
+- CHG: Add name and timeout attributes to class DataConnection
+- ADD: service file for hub
+
 ## Suggestion
 
 - Add Environment File for Variables
