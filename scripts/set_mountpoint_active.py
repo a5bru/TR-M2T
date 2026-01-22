@@ -18,22 +18,25 @@ def get_mountpoint_names():
 def set_mountpoint_active(name, active):
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
-    cursor.execute(
-        """
-        UPDATE mountpoints SET active = ? WHERE name = ?
-    """,
-        (int(active), name),
-    )
+    if name == "__ALL__":
+        name_lst = get_mountpoint_names()
+        cursor.execute(f"UPDATE mountpoints SET active = {int(active)}")
+    else:
+        cursor.execute(
+            """
+            UPDATE mountpoints SET active = ? WHERE name = ?
+        """,
+            (int(active), name),
+        )
     conn.commit()
     conn.close()
     print(f"Mountpoint name '{name}' set to active={active}")
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Enable or disable a mountpoint by name."
-    )
+    parser = argparse.ArgumentParser(description="Enable or disable a mountpoint by name.")
     names = get_mountpoint_names()
+    names.append("__ALL__")
     parser.add_argument(
         "--name",
         required=True,

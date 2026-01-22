@@ -2,11 +2,10 @@
 Worker module for processing NTRIP data and publishing to MQTT.
 
 This module defines worker threads that receive NTRIP stream data from the hub,
-parse it (optionally), and publish it to MQTT topics using background threads.
+parse it (optionally), and publish it to MQTT topics.
 """
 
 import io
-import queue
 import random
 import string
 import threading
@@ -57,7 +56,7 @@ def worker(
     Worker thread that processes NTRIP streams and publishes to MQTT.
 
     Connects to an MQTT broker, receives raw NTRIP data via ZMQ, optionally parses
-    it using a background thread, and publishes it to configured MQTT topics.
+    it using RTCMReader, and publishes it to configured MQTT topics.
 
     Args:
         name: Thread name for logging and identification.
@@ -149,66 +148,17 @@ def worker(
 
     logger.info(f"Started MQTT client {mqtt_client_id}")
 
-    # Background parsing thread if PARSE_RAW is enabled
-    parse_queue: queue.Queue = queue.Queue(maxsize=1000)
-    parse_stop = threading.Event()
-
-    def parsing_thread_func():
-        """Background thread for RTCM message parsing."""
-        while not parse_stop.is_set():
-            try:
-                fd, conn_obj, topic = parse_queue.get(timeout=0.1)
-                if conn_obj is None or fd not in connections:
-                    continue
-
-                try:
-                    # Parse available messages from buffer
-                    conn_obj._buffer.seek(0)
-
-                    messages_parsed = 0
-                    while True:
-                        result = conn_obj._rtcm_parser.parse(conn_obj._buffer)
-                        if result is None:
-                            break
-
-                        message_id, raw_message = result
-                        topic_m = f"{topic}/{message_id}"
-                        logger.debug(f"Topic: {topic_m}, Data: {len(raw_message)} bytes")
-
-                        if mqtt_connected.is_set():
-                            mqtt_client.publish(topic_m, raw_message, qos=0)
-                        messages_parsed += 1
-
-                    # Compact buffer if large
-                    buffer_size = len(conn_obj._buffer.getvalue())
-                    if buffer_size > 262144:
-                        unprocessed_data = conn_obj._buffer.read()
-                        logger.debug(
-                            f"{conn_obj.name}: Parser compacting buffer from {buffer_size} to {len(unprocessed_data)} bytes."
-                        )
-                        conn_obj._buffer = io.BytesIO(unprocessed_data)
-
-                except Exception as e:
-                    logger.error(f"Parsing thread error for fd={fd}: {e}")
-
-            except queue.Empty:
-                continue
-
-    if config.PARSE_RAW:
-        parse_thread = threading.Thread(target=parsing_thread_func, daemon=False)
-        parse_thread.start()
-
-    # Main receive loop
     while not run_event.is_set():
         try:
             # Poll with low latency timeout
-            socks = dict(poller.poll(timeout=10))  # 10ms timeout
+            socks = dict(poller.poll(timeout=10))  # 10ms timeout for low-latency processing
 
             if receiver not in socks:
                 continue
 
             fd, data = receiver.recv_pyobj(flags=zmq.NOBLOCK)
         except zmq.Again:
+            # No message available, continue loop
             continue
         except Exception as e:
             logger.error(f"ZMQ receive error: {e}")
@@ -218,45 +168,63 @@ def worker(
             continue
 
         try:
+            # The fd might be removed by hub concurrently; re-check
             conn_obj = connections.get(fd)
             if conn_obj is None:
                 continue
 
+            # Append new data to the buffer
+
             logger.debug(f"{conn_obj.name} Received {len(data)} bytes of data")
+
+            # Append new data to buffer
+            conn_obj._buffer.seek(0, io.SEEK_END)
+            conn_obj._buffer.write(data)
 
             p2 = conn_obj.name
             topic = f"{config.MQTT_TOPIC_PREFIX}/{p2}/rtcm"
-            topic_raw = f"{config.MQTT_TOPIC_PREFIX}/{p2}/raw"
 
             if not config.PARSE_RAW:
-                # Raw mode: publish immediately, no parsing overhead
+                # Fast path: publish only the new chunk and reset buffer
                 if mqtt_connected.is_set():
-                    mqtt_client.publish(topic_raw, data, qos=0)
+                    mqtt_client.publish(topic, data, qos=0)
+                conn_obj._buffer = io.BytesIO()
             else:
-                # Parse mode: publish raw immediately, queue for background parsing
-                if mqtt_connected.is_set():
-                    mqtt_client.publish(topic_raw, data, qos=0)
-
-                # Append to buffer for background parsing
-                conn_obj._buffer.seek(0, io.SEEK_END)
-                conn_obj._buffer.write(data)
-
-                # Queue for background parsing (non-blocking)
+                # Parsing path (slower)
+                logger.debug(f"{conn_obj.name}: Parsing RTCM data {len(data)} bytes")
                 try:
-                    parse_queue.put_nowait((fd, conn_obj, topic))
-                except queue.Full:
-                    logger.debug(f"Parse queue full for fd={fd}, skipping background parse")
+                    # Parse all available messages from buffer
+                    conn_obj._buffer.seek(0)
 
+                    while True:
+                        result = conn_obj._rtcm_parser.parse(conn_obj._buffer)
+                        if result is None:
+                            # No more complete messages available
+                            break
+
+                        message_id, raw_message = result
+                        topic_m = f"{topic}/{message_id}"
+                        logger.debug(f"Topic: {topic_m}, Data: {len(raw_message)} bytes")
+
+                        if mqtt_connected.is_set():
+                            mqtt_client.publish(topic_m, raw_message, qos=0)
+
+                    # Compact buffer if it's getting large (> 128KB)
+                    current_pos = conn_obj._buffer.tell()
+                    buffer_size = len(conn_obj._buffer.getvalue())
+
+                    if buffer_size > 131072:
+                        # Keep unprocessed data, discard processed
+                        unprocessed_data = conn_obj._buffer.read()
+                        logger.debug(
+                            f"{conn_obj.name}: Compacting buffer from {buffer_size} to {len(unprocessed_data)} bytes."
+                        )
+                        conn_obj._buffer = io.BytesIO(unprocessed_data)
+
+                except Exception as e:
+                    logger.error(f"{conn_obj.name}: RTCM parsing failed ({e}).")
+                    logger.error(f"Parser error: {conn_obj._rtcm_parser.last_error}")
+                    # Clear buffer on error to prevent infinite loops
+                    conn_obj._buffer = io.BytesIO()
         except Exception as e:
             logger.error(traceback.format_exc())
-
-    # Cleanup
-    mqtt_should_stop.set()
-    if config.PARSE_RAW:
-        parse_stop.set()
-        parse_thread.join(timeout=2)
-    mqtt_client.loop_stop()
-    try:
-        mqtt_client.disconnect()
-    except Exception:
-        pass

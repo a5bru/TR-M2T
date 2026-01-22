@@ -66,9 +66,7 @@ def fetch_active_mountpoints() -> List[Tuple[int, str, str, int]]:
     """
     conn = sqlite3.connect(config.DATABASE)
     cursor = conn.cursor()
-    cursor.execute(
-        "SELECT id, connection_string, name, timeout FROM mountpoints WHERE active = 1"
-    )
+    cursor.execute("SELECT id, connection_string, name, timeout FROM mountpoints WHERE active = 1")
     rows = cursor.fetchall()
     conn.close()
     return rows

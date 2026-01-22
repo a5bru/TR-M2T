@@ -29,12 +29,8 @@ def main():
         required=True,
         help="Connection string (e.g. ntrip://user:pass@host:port/mount)",
     )
-    parser.add_argument(
-        "--active", type=int, default=1, help="Active flag (1=active, 0=inactive)"
-    )
-    parser.add_argument(
-        "--timeout", type=int, default=15, help="Timeout in seconds for the stream"
-    )
+    parser.add_argument("--active", type=int, default=1, help="Active flag (1=active, 0=inactive)")
+    parser.add_argument("--timeout", type=int, default=15, help="Timeout in seconds for the stream")
     args = parser.parse_args()
     add_mountpoint(args.name, args.connection, args.active, args.timeout)
 

@@ -30,8 +30,8 @@ def list_mountpoints(show_inactive: bool = True):
 
     print(f"Mountpoints in {DB_PATH} (active only: {not show_inactive}):")
     for rid, name, conn_str, active, timeout in rows:
-        status = "active" if active else "inactive"
-        print(f"- id={rid} name={name} status={status} timeout={timeout}s conn={conn_str}")
+        status = "enabled" if active else "disabled"
+        print(f"- id={rid} name={name} status={status:<8s} timeout={timeout}s conn={conn_str}")
     return 0
 
 

@@ -71,6 +71,7 @@ def check_mountpoints(name: str, sock: socket.socket) -> None:
         for fd in list(connections.keys()):
             if connections[fd].idx not in active_ids:
                 enable_queue.put_nowait(int(fd))
+                # o = urlparse(connections[fd].url)
                 logger.info(f"I: {connections[fd].name}: Closing connection")
                 found_inactive = True
 
@@ -92,33 +93,23 @@ def check_mountpoints(name: str, sock: socket.socket) -> None:
                     pass
 
         # Parallelize mountpoint creation with multiple loader threads
-        # Apply exponential backoff for failed connections and skip pending attempts
+        # Apply exponential backoff for failed connections
         to_create = []
         current_time = time.time()
         for idx, connection_string, name, timeout in active_mountpoints:
-            if idx in active_streams:
-                continue
-
-            # If we have an entry and it's pending, skip scheduling a new attempt
-            if name in inactive and not inactive[name].pending:
-                continue
-
-            if name not in inactive:
-                # First attempt
-                inactive[name] = InactiveMountpoint()
-                inactive[name].pending = True
-                inactive[name].last_attempt = current_time
-                to_create.append((idx, connection_string, name, timeout))
-            else:
-                # Exponential backoff: wait 2^attempt seconds
-                attempt_count = inactive[name].count
-                last_attempt = inactive[name].last_attempt
-
-                backoff_time = 2 ** min(attempt_count, 8)  # Cap at 2^8 = 256 seconds
-                if current_time - last_attempt >= backoff_time:
-                    inactive[name].pending = True
-                    inactive[name].last_attempt = current_time
+            if idx not in active_streams:
+                # Check if we should retry based on exponential backoff
+                if name not in inactive:
+                    # First attempt
                     to_create.append((idx, connection_string, name, timeout))
+                else:
+                    # Exponential backoff: wait 2^attempt seconds
+                    attempt_count = inactive[name].count
+                    last_attempt = inactive[name].last_attempt
+
+                    backoff_time = 2 ** min(attempt_count, 8)  # Cap at 2^8 = 256 seconds
+                    if current_time - last_attempt >= backoff_time:
+                        to_create.append((idx, connection_string, name, timeout))
 
         if to_create:
 
@@ -156,27 +147,27 @@ def handle_events(name: str, mgmt_sock: socket.socket) -> None:
     sender.bind(f"tcp://*:{config.ZMQ_PULL_PORT}")
     selector.register(mgmt_sock, selectors.EVENT_READ)
 
-    # Overflow queue only for when ZMQ send buffer is full
-    overflow_queue: queue.Queue = queue.Queue(maxsize=50000)
+        # Overflow queue only for when ZMQ send buffer is full
+        overflow_queue: queue.Queue = queue.Queue(maxsize=50000)
 
     def sender_thread_func() -> None:
-        """Dedicated thread for sending queued overflow messages to workers via ZMQ."""
+            """Dedicated thread for sending queued overflow messages to workers via ZMQ."""
         while not run_event.is_set():
             try:
-                fd, data, mount = overflow_queue.get(timeout=0.01)
+                    fd, data, mount = overflow_queue.get(timeout=0.01)
                 try:
-                    # Send with timeout to avoid blocking forever
-                    sender.send_pyobj((fd, data), flags=zmq.NOBLOCK)
+                        # Send with timeout to avoid blocking forever
+                        sender.send_pyobj((fd, data), flags=zmq.NOBLOCK)
                     try:
                         BYTES_TRANSFERRED.labels(mountpoint=mount).inc(len(data))
                     except Exception:
                         pass
                 except zmq.error.Again:
-                    # Queue is still full, put back and wait
-                    try:
-                        overflow_queue.put((fd, data, mount), block=False)
-                    except queue.Full:
-                        logger.warning(f"Overflow queue full for fd={fd}")
+                        # Queue is still full, put back and wait
+                        try:
+                            overflow_queue.put((fd, data, mount), block=False)
+                        except queue.Full:
+                            logger.warning(f"Overflow queue full for fd={fd}")
             except queue.Empty:
                 continue
             except Exception as e:
@@ -279,7 +270,6 @@ def main(name: str) -> None:
             time.sleep(5)
 
     # start worker threads
-    worker_threads = []
     mqtt_url = f"mqtt://{config.MQTT_USER}:{config.MQTT_PSWD}@{config.MQTT_HOST}:{config.MQTT_PORT}"
     logger.info(f"MQTT_URL: {mqtt_url}")
     worker_prefix: str = generate_random_string(8)
@@ -296,10 +286,9 @@ def main(name: str) -> None:
                 connections,
             ),
         )
-        t.daemon = False
+        t.daemon = True
         t.start()
-        worker_threads.append(t)
-    time.sleep(2)
+    time.sleep(1)
 
     # start checker thread
     db_thread = threading.Thread(
@@ -309,7 +298,7 @@ def main(name: str) -> None:
             sock1,
         ),
     )
-    db_thread.daemon = False
+    db_thread.daemon = True
     db_thread.start()
 
     # start selector
@@ -320,27 +309,15 @@ def main(name: str) -> None:
             sock2,
         ),
     )
-    ev_thread.daemon = False
+    ev_thread.daemon = True
     ev_thread.start()
 
     setproctitle.setproctitle(name)
+    logger.info(f"Thread {name}")
 
-    try:
-        # Block main thread until interrupted
-        while not run_event.is_set():
-            time.sleep(1)
-    except KeyboardInterrupt:
-        logger.info("Received KeyboardInterrupt, shutting down...")
-        run_event.set()
+    while not run_event.is_set():
+        time.sleep(1)
 
-    # Gracefully stop threads
-    try:
-        sock1.close()
-        sock2.close()
-    except Exception:
-        pass
 
-    for t in worker_threads:
-        t.join(timeout=2)
-    db_thread.join(timeout=2)
-    ev_thread.join(timeout=2)
+if __name__ == "__main__":
+    main("HUB/MAIN")

@@ -42,7 +42,7 @@ from . import config
 logger = logging.getLogger(__name__)
 from pyrtcm import RTCMReader
 
-BUFFER_SIZE = 1024*2
+BUFFER_SIZE = 1024 * 2
 
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 ENV_PATH = os.path.join(ROOT_DIR, ".env")
@@ -99,9 +99,7 @@ parser.add_argument(
 parser.add_argument("-n", default=config.MQTT_USER, type=str, help="Set the MQTT username")
 parser.add_argument("-c", default=config.MQTT_PSWD, type=str, help="Set the MQTTpassword")
 # Settings for the Format
-parser.add_argument(
-    "--timeout", default=15, type=int, help="Set the timeout for data receiving"
-)
+parser.add_argument("--timeout", default=15, type=int, help="Set the timeout for data receiving")
 parser.add_argument(
     "--format",
     default=FMT_NONE,
@@ -113,12 +111,8 @@ parser.add_argument(
     action="store_true",
     help="Publish each message type under a special topic",
 )
-parser.add_argument(
-    "--filter-allowed", action="store_true", help="Only publish allowed messages."
-)
-parser.add_argument(
-    "-v", "--verbose", action="store_true", help="Enable verbose output"
-)
+parser.add_argument("--filter-allowed", action="store_true", help="Only publish allowed messages.")
+parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose output")
 
 args = parser.parse_args()
 
@@ -280,7 +274,7 @@ def main():
                         raise Exception(f"E: {args.D}: Empty response")
                     if args.verbose:
                         logger.info("P: %s: %s bytes", topic, len(data))
-                    
+
                     if args.topic_per_type:
                         try:
                             msg = RTCMReader.parse(data)

@@ -14,6 +14,7 @@
 
 """This script subscribes to an MQTT broker and outputs received messages to stdout or to a tcp server."""
 
+
 import sys
 import os
 import socket
@@ -62,9 +63,7 @@ s_mqtt, s_tcp = socket.socketpair()
 # Settings for MQTT
 parser.add_argument("-a", default=MQTT_HOST, type=str, help="Set the MQTT host")
 parser.add_argument("-p", default=MQTT_PORT, type=int, help="Set the MQTT port")
-parser.add_argument(
-    "-m", default=MQTT_PATH, type=str, help="Set the root topic for the data"
-)
+parser.add_argument("-m", default=MQTT_PATH, type=str, help="Set the root topic for the data")
 parser.add_argument("-n", default=MQTT_USER, type=str, help="Set the MQTT username")
 parser.add_argument("-c", default=MQTT_PSWD, type=str, help="Set the MQTT password")
 # Settings for output
@@ -81,9 +80,7 @@ args = parser.parse_args()
 # --- TCP callbacks ---
 
 
-def tcp_server_thread(
-    port: int, socket_data: socket.socket = s_tcp, bind_address: str = ""
-):
+def tcp_server_thread(port: int, socket_data: socket.socket = s_tcp, bind_address: str = ""):
 
     selector.register(socket_data, selectors.EVENT_READ, data="socketpair")
 
@@ -202,9 +199,7 @@ def on_connect(client, userdata, flags, reason_code, properties):
 # Callback for when a message is received
 def on_message(client, userdata, msg):
     if args.v:
-        print(
-            f"Received message on topic {msg.topic} with payload size {len(msg.payload)} bytes"
-        )
+        print(f"Received message on topic {msg.topic} with payload size {len(msg.payload)} bytes")
     broadcast_data(msg.payload, socket_out=s_mqtt)
 
 

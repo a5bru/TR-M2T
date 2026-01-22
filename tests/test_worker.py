@@ -1,4 +1,5 @@
 """Tests for worker module."""
+
 import pytest
 from trm2t.worker import generate_random_string
 

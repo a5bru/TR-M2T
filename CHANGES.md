@@ -35,6 +35,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CHG: Add name and timeout attributes to class DataConnection
 - ADD: service file for hub
 
+### 2026-01-22
+
+- CHG: Using BlackFormatter
+- CHG: Switch from Dict to class InactiveMountpoints for inactive mountpoints
+
 ## Suggestion
 
 - Add Environment File for Variables

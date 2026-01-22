@@ -1,14 +1,14 @@
 #!/usr/bin/python3
 
 # DISCLAIMER:
-# This code is provided "as is" without any warranties or guarantees of any kind. Use it at your 
-# own risk. The author is not responsible for any damage or loss that may occur through the use 
+# This code is provided "as is" without any warranties or guarantees of any kind. Use it at your
+# own risk. The author is not responsible for any damage or loss that may occur through the use
 # of this code.
 #
 # Always review and test the code thoroughly before using it in any production environment.
 #
-# It is strongly recommended to test this code in a controlled, non-production environment 
-# before deploying it to a live system. Ensure that all functionalities work as expected and 
+# It is strongly recommended to test this code in a controlled, non-production environment
+# before deploying it to a live system. Ensure that all functionalities work as expected and
 # that the code does not introduce any security vulnerabilities or performance issues.
 
 
@@ -36,13 +36,23 @@ FMT_CHOICES = [
 ]
 
 parser = argparse.ArgumentParser()
-parser.add_argument("-a", default=config.MQTT_HOST, type=str, help="Set the host of the MQTT broker")
-parser.add_argument("-p", default=config.MQTT_PORT, type=int, help="Set the port of the MQTT broker")
-parser.add_argument("-m", default=config.MQTT_TOPIC_PREFIX, type=str, help="Set the root topic for the data")
+parser.add_argument(
+    "-a", default=config.MQTT_HOST, type=str, help="Set the host of the MQTT broker"
+)
+parser.add_argument(
+    "-p", default=config.MQTT_PORT, type=int, help="Set the port of the MQTT broker"
+)
+parser.add_argument(
+    "-m", default=config.MQTT_TOPIC_PREFIX, type=str, help="Set the root topic for the data"
+)
 parser.add_argument("-n", default=config.MQTT_USER, type=str, help="Set the username")
 parser.add_argument("-c", default=config.MQTT_PSWD, type=str, help="Set the password")
-parser.add_argument("--format", default=FMT_NONE, choices=FMT_CHOICES, help="Define the used format for parsing")
-parser.add_argument("--topic-per-type", action="store_true", help="Publish each message type under a special topic")
+parser.add_argument(
+    "--format", default=FMT_NONE, choices=FMT_CHOICES, help="Define the used format for parsing"
+)
+parser.add_argument(
+    "--topic-per-type", action="store_true", help="Publish each message type under a special topic"
+)
 parser.add_argument("--filter-allowed", action="store_true", help="Only publish allowed messages.")
 
 args = parser.parse_args()
@@ -55,20 +65,80 @@ PRE_UBX = [b"\xb5", b"\x62"]
 PRE_SBF = [b"\x24", b"\x40"]
 
 ALLOWED_MESSAGES_RTCM = [
-    1001, 1002, 1003,
-    1005, 1006, 1007, 1008, 1009, 1010, 1011,
-    1004, 1012, 1013,
-    1019, 1020,
+    1001,
+    1002,
+    1003,
+    1005,
+    1006,
+    1007,
+    1008,
+    1009,
+    1010,
+    1011,
+    1004,
+    1012,
+    1013,
+    1019,
+    1020,
     1029,
-    1032, 1033, 1034, 1035,
-    1041, 1042, 1044, 1045, 1046,
-    1071, 1081, 1091, 1101, 1111, 1121, 1131,
-    1072, 1082, 1092, 1102, 1112, 1122, 1132,
-    1073, 1083, 1093, 1103, 1113, 1123, 1133,
-    1074, 1084, 1094, 1104, 1114, 1124, 1134,
-    1075, 1085, 1095, 1105, 1115, 1125, 1135,
-    1076, 1086, 1096, 1106, 1116, 1126, 1136,
-    1077, 1087, 1097, 1107, 1117, 1127, 1137,
+    1032,
+    1033,
+    1034,
+    1035,
+    1041,
+    1042,
+    1044,
+    1045,
+    1046,
+    1071,
+    1081,
+    1091,
+    1101,
+    1111,
+    1121,
+    1131,
+    1072,
+    1082,
+    1092,
+    1102,
+    1112,
+    1122,
+    1132,
+    1073,
+    1083,
+    1093,
+    1103,
+    1113,
+    1123,
+    1133,
+    1074,
+    1084,
+    1094,
+    1104,
+    1114,
+    1124,
+    1134,
+    1075,
+    1085,
+    1095,
+    1105,
+    1115,
+    1125,
+    1135,
+    1076,
+    1086,
+    1096,
+    1106,
+    1116,
+    1126,
+    1136,
+    1077,
+    1087,
+    1097,
+    1107,
+    1117,
+    1127,
+    1137,
     1230,
 ]
 
@@ -89,16 +159,16 @@ client.connect(args.a, args.p)
 
 try:
     topic = args.m
-    
+
     # Continuously read from stdin
     while True:
 
         # Handle RTCM Format
         if args.format == FMT_RTCM:
-            
-            data = sys.stdin.buffer.read(1)    
+
+            data = sys.stdin.buffer.read(1)
             # Find Preamble byte 0b11010011
-            while data != PRE_RTCM: 
+            while data != PRE_RTCM:
                 data = sys.stdin.buffer.read(1)
             # 2 first bytes: 6 bits Reserved and 10 bits Message Length (0 - 1023 bytes)
             length_data = sys.stdin.buffer.read(2)
@@ -117,14 +187,14 @@ try:
             topic = args.m
             if args.topic_per_type:
                 topic += f"/{message_number:04d}"
-                
+
             # Putting the bytes together
             data = PRE_RTCM + length_data + packet_data + crc24_data
 
         # TODO Handle Septentrio's SBF Format, not tested!
         elif args.format == FMT_SBF:
-            
-            data = sys.stdin.buffer.read(1)            
+
+            data = sys.stdin.buffer.read(1)
             # Find Preamble byte x24
             while data != PRE_SBF[0]:
                 data = sys.stdin.buffer.read(1)
@@ -147,14 +217,14 @@ try:
             payload_data = sys.stdin.buffer.read(length)
 
             # Putting the bytes together
-            data = b"".join(PRE_SBF) + crc_data + id_data + length_data + payload_data            
-           
+            data = b"".join(PRE_SBF) + crc_data + id_data + length_data + payload_data
+
         # TODO Handle U-blox' UBX Format, not tested!
         elif args.format == FMT_UBX:
-            
-            data = sys.stdin.buffer.read(1)    
+
+            data = sys.stdin.buffer.read(1)
             # Find Preamble byte xb5
-            while data != PRE_UBX[0]: 
+            while data != PRE_UBX[0]:
                 data = sys.stdin.buffer.read(1)
             # Find Preamble byte x62
             data = sys.stdin.buffer.read(1)
@@ -181,7 +251,14 @@ try:
         else:
 
             data = b""
-            readable, _, _ = select.select([sys.stdin,], [], [], BUFFER_WAIT)
+            readable, _, _ = select.select(
+                [
+                    sys.stdin,
+                ],
+                [],
+                [],
+                BUFFER_WAIT,
+            )
 
             if len(readable) > 0:
                 data = os.read(sys.stdin.fileno(), BUFFER_READ_SIZE)
