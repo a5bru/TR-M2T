@@ -36,6 +36,7 @@ TR-M2T acts as a central hub that:
 ✅ **Optional RTCM Parsing**: Parse and validate RTCM messages with pyrtcm  
 ✅ **Prometheus Metrics**: Monitor stream status, bytes transferred, and connection health  
 ✅ **Flexible MQTT Publishing**: Configurable topics and QoS settings  
+✅ **TCP Relay Output**: Optional per-mountpoint TCP servers for direct clients  
 
 ---
 
@@ -197,6 +198,13 @@ ZMQ_PULL_PORT=6969             # Port for inter-thread communication
 
 # Optional: RTCM Parsing
 TRM2T_PARSE_RAW=false          # Set to 'true' to parse RTCM messages
+
+# Optional: TCP relay (per mountpoint)
+TRM2T_TCP_RELAY=true           # Start a TCP server for each active mountpoint
+TRM2T_TCP_RELAY_BASE_PORT=24000 # Listening port = BASE_PORT + mountpoint id
+TRM2T_TCP_RELAY_BIND=0.0.0.0    # Bind address for TCP relay
+TRM2T_TCP_RELAY_BACKLOG=8       # Max pending connections per relay
+TRM2T_TCP_RELAY_QUEUE=5000      # Buffered messages per relay before drop
 
 # Prometheus Metrics
 PROM_PORT=8000                 # Metrics endpoint port

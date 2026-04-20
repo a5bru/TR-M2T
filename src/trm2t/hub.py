@@ -11,8 +11,7 @@ import selectors
 import time
 import threading
 import logging
-from typing import Dict, Optional, Any
-from urllib.parse import urlparse
+from typing import Dict, Optional
 import zmq
 import setproctitle
 from concurrent.futures import ThreadPoolExecutor
@@ -26,6 +25,7 @@ from .connection import (
     DataConnection,
     InactiveMountpoint,
 )
+from .tcp_server import build_tcp_manager, TcpServerManager
 
 from .db import fetch_active_mountpoints
 
@@ -35,13 +35,16 @@ context: zmq.Context = zmq.Context()
 selector: selectors.DefaultSelector = selectors.DefaultSelector()
 connections: Dict[int, DataConnection] = {}
 inactive: Dict[str, InactiveMountpoint] = {}
+tcp_manager: Optional[TcpServerManager] = None
 
 run_event: threading.Event = threading.Event()
 
 enable_queue: queue.Queue = queue.Queue()
 
 
-def check_mountpoints(name: str, sock: socket.socket) -> None:
+def check_mountpoints(
+    name: str, sock: socket.socket, tcp_manager: Optional[TcpServerManager]
+) -> None:
     """
     Periodically check for active mountpoints and manage connections.
 
@@ -51,6 +54,7 @@ def check_mountpoints(name: str, sock: socket.socket) -> None:
     Args:
         name: Thread name for logging.
         sock: Socket for signaling connection changes to the event handler.
+        tcp_manager: Optional TCP relay manager used to spawn per-stream servers.
 
     Returns:
         None
@@ -124,7 +128,11 @@ def check_mountpoints(name: str, sock: socket.socket) -> None:
 
             def loader(args):
                 creation_thread(
-                    *args, selector=selector, connections=connections, inactive=inactive
+                    *args,
+                    selector=selector,
+                    connections=connections,
+                    inactive=inactive,
+                    tcp_manager=tcp_manager,
                 )
 
             with ThreadPoolExecutor(max_workers=config.HUB_CREATION_LOADERS) as executor:
@@ -133,7 +141,9 @@ def check_mountpoints(name: str, sock: socket.socket) -> None:
         time.sleep(10)
 
 
-def handle_events(name: str, mgmt_sock: socket.socket) -> None:
+def handle_events(
+    name: str, mgmt_sock: socket.socket, tcp_manager: Optional[TcpServerManager]
+) -> None:
     """
     Handle incoming data from NTRIP connections and manage stream lifecycle.
 
@@ -143,6 +153,7 @@ def handle_events(name: str, mgmt_sock: socket.socket) -> None:
     Args:
         name: Thread name for logging.
         mgmt_sock: Socket for receiving connection management signals.
+        tcp_manager: Optional TCP relay manager for forwarding data to TCP clients.
 
     Returns:
         None
@@ -201,6 +212,11 @@ def handle_events(name: str, mgmt_sock: socket.socket) -> None:
                     enable_queue.task_done()
                     # fd = int(fd_b)
                     if fd in connections:
+                        if tcp_manager is not None:
+                            try:
+                                tcp_manager.remove_server(connections[fd].name)
+                            except Exception:
+                                logger.exception("TCP relay teardown failed")
                         selector.unregister(connections[fd].socket)
                         connections[fd].active = False
                         try:
@@ -228,6 +244,11 @@ def handle_events(name: str, mgmt_sock: socket.socket) -> None:
                                 overflow_queue.put_nowait((fd, data, mount))
                             except queue.Full:
                                 logger.warning(f"Overflow queue full for fd={fd}")
+                        if tcp_manager is not None:
+                            try:
+                                tcp_manager.broadcast(mount, data)
+                            except Exception:
+                                logger.exception("TCP relay broadcast failed")
                     except Exception:
                         pass
 
@@ -240,6 +261,11 @@ def handle_events(name: str, mgmt_sock: socket.socket) -> None:
                             STREAM_STATUS.labels(mountpoint=connections[fd].name).set(0)
                         except Exception:
                             pass
+                        if tcp_manager is not None:
+                            try:
+                                tcp_manager.remove_server(connections[fd].name)
+                            except Exception:
+                                logger.exception("TCP relay teardown failed")
                         del connections[fd]
 
 
@@ -260,6 +286,10 @@ def main(name: str) -> None:
     # Start Prometheus metrics server
     start_http_server(config.PROM_PORT)
     logger.info(f"Prometheus endpoint started on :{config.PROM_PORT}")
+
+    global tcp_manager
+    tcp_manager = build_tcp_manager(run_event)
+    tcp_manager.start()
 
     sock1, sock2 = socket.socketpair()
 
@@ -307,6 +337,7 @@ def main(name: str) -> None:
         args=(
             "HUB/CHK",
             sock1,
+            tcp_manager,
         ),
     )
     db_thread.daemon = False
@@ -318,6 +349,7 @@ def main(name: str) -> None:
         args=(
             "HUB/EVE",
             sock2,
+            tcp_manager,
         ),
     )
     ev_thread.daemon = False
@@ -339,6 +371,9 @@ def main(name: str) -> None:
         sock2.close()
     except Exception:
         pass
+
+    if tcp_manager is not None:
+        tcp_manager.stop()
 
     for t in worker_threads:
         t.join(timeout=2)

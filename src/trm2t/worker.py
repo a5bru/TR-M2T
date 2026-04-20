@@ -13,6 +13,7 @@ import threading
 import time
 import traceback
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, Optional, Callable
 from urllib.parse import urlparse
 
@@ -83,120 +84,166 @@ def worker(
 
     o = urlparse(url)
 
-    # Initialize MQTT Client with robust reconnect
-    mqtt_client_id = f"n2m-{w_id:02d}-{w_pre}"
-    mqtt_client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=mqtt_client_id)
-    if o.username and o.password:
-        mqtt_client.username_pw_set(o.username, o.password)
-
-    mqtt_connected: threading.Event = threading.Event()
+    # Initialize MQTT client pool with robust reconnect
     mqtt_should_stop: threading.Event = threading.Event()
+    mqtt_clients: list[tuple[mqtt.Client, threading.Event]] = []
+    mqtt_rr_lock = threading.Lock()
+    mqtt_rr_index = 0
+    mqtt_pool_size = max(1, getattr(config, "MQTT_CLIENT_POOL_SIZE", 2))
 
-    def on_connect(
-        client: mqtt.Client,
-        userdata: object,
-        flags: Dict,
-        rc: int,
-        properties: Optional[object] = None,
-    ) -> None:
-        """Callback for MQTT connection establishment."""
-        if rc == 0:
-            logger.info(f"MQTT client {mqtt_client_id} connected.")
-            mqtt_connected.set()
-        else:
-            logger.error(f"MQTT client {mqtt_client_id} failed to connect, rc={rc}")
-            mqtt_connected.clear()
+    def next_mqtt_client() -> tuple[Optional[mqtt.Client], Optional[threading.Event]]:
+        """Round-robin selection of MQTT client from the pool."""
+        nonlocal mqtt_rr_index
+        if not mqtt_clients:
+            return None, None
+        with mqtt_rr_lock:
+            client, ev = mqtt_clients[mqtt_rr_index % len(mqtt_clients)]
+            mqtt_rr_index += 1
+            return client, ev
 
-    def on_disconnect(
-        client: mqtt.Client,
-        userdata: object,
-        rc: int,
-        properties: Optional[object] = None,
-        reason_code: Optional[int] = None,
-    ) -> None:
-        """Callback for MQTT disconnection."""
-        logger.warning(f"MQTT client {mqtt_client_id} disconnected (rc={rc})")
-        mqtt_connected.clear()
-        if not mqtt_should_stop.is_set():
-            # Try to reconnect in background
-            while not mqtt_should_stop.is_set():
-                try:
-                    logger.info(f"MQTT client {mqtt_client_id} attempting reconnect...")
-                    client.reconnect()
-                    return
-                except Exception as e:
-                    logger.error(f"MQTT reconnect failed: {e}")
-                    time.sleep(2)
+    def make_callbacks(client_id: str, connected_event: threading.Event):
+        def on_connect(
+            client: mqtt.Client,
+            userdata: object,
+            flags: Dict,
+            rc: int,
+            properties: Optional[object] = None,
+        ) -> None:
+            if rc == 0:
+                logger.info(f"MQTT client {client_id} connected.")
+                connected_event.set()
+            else:
+                logger.error(f"MQTT client {client_id} failed to connect, rc={rc}")
+                connected_event.clear()
 
-    mqtt_client.on_connect = on_connect
-    mqtt_client.on_disconnect = on_disconnect
+        def on_disconnect(
+            client: mqtt.Client,
+            userdata: object,
+            rc: int,
+            properties: Optional[object] = None,
+            reason_code: Optional[int] = None,
+        ) -> None:
+            logger.warning(f"MQTT client {client_id} disconnected (rc={rc})")
+            connected_event.clear()
+            if not mqtt_should_stop.is_set():
+                while not mqtt_should_stop.is_set():
+                    try:
+                        logger.info(f"MQTT client {client_id} attempting reconnect...")
+                        client.reconnect()
+                        return
+                    except Exception as e:
+                        logger.error(f"MQTT reconnect failed for {client_id}: {e}")
+                        time.sleep(2)
 
-    # Connect with retry
-    for attempt in range(5):
-        try:
-            mqtt_client.connect(o.hostname, o.port)
-            break
-        except Exception as e:
-            logger.error(f"MQTT initial connect failed (attempt {attempt+1}/5): {e}")
-            time.sleep(2)
-    mqtt_client.loop_start()  # Start the MQTT client loop
+        return on_connect, on_disconnect
 
-    # Wait for connection
-    if not mqtt_connected.wait(timeout=10):
-        logger.warning(
-            f"MQTT client {mqtt_client_id} could not connect after 10s, continuing anyway."
-        )
+    for idx in range(mqtt_pool_size):
+        client_id = f"n2m-{w_id:02d}-{w_pre}-{idx}"
+        client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=client_id)
+        if o.username and o.password:
+            client.username_pw_set(o.username, o.password)
 
-    logger.info(f"Started MQTT client {mqtt_client_id}")
+        connected_evt: threading.Event = threading.Event()
+        cb_connect, cb_disconnect = make_callbacks(client_id, connected_evt)
+        client.on_connect = cb_connect
+        client.on_disconnect = cb_disconnect
 
-    # Background parsing thread if PARSE_RAW is enabled
-    parse_queue: queue.Queue = queue.Queue(maxsize=1000)
-    parse_stop = threading.Event()
-
-    def parsing_thread_func():
-        """Background thread for RTCM message parsing."""
-        while not parse_stop.is_set():
+        # Adjust MQTT internal queues if configured
+        if hasattr(client, "max_queued_messages_set"):
+            max_q = getattr(config, "MQTT_MAX_QUEUED_MESSAGES", 0)
             try:
-                fd, conn_obj, topic = parse_queue.get(timeout=0.1)
-                if conn_obj is None or fd not in connections:
-                    continue
+                client.max_queued_messages_set(max_q)
+            except Exception:
+                pass
+        if hasattr(client, "max_inflight_messages_set"):
+            max_inflight = getattr(config, "MQTT_MAX_INFLIGHT", 20)
+            try:
+                client.max_inflight_messages_set(max_inflight)
+            except Exception:
+                pass
 
-                try:
-                    # Parse available messages from buffer
-                    conn_obj._buffer.seek(0)
+        # Connect with retry
+        for attempt in range(5):
+            try:
+                client.connect(o.hostname, o.port)
+                break
+            except Exception as e:
+                logger.error(
+                    f"MQTT initial connect failed for {client_id} (attempt {attempt+1}/5): {e}"
+                )
+                time.sleep(2)
+        client.loop_start()
+        mqtt_clients.append((client, connected_evt))
 
-                    messages_parsed = 0
-                    while True:
-                        result = conn_obj._rtcm_parser.parse(conn_obj._buffer)
-                        if result is None:
-                            break
+    # Wait briefly for any client to connect
+    connected_any = False
+    for _ in range(10):
+        if any(evt.is_set() for _, evt in mqtt_clients):
+            connected_any = True
+            break
+        time.sleep(1)
+    if not connected_any:
+        logger.warning(
+            f"No MQTT clients connected after 10s (pool size={mqtt_pool_size}), continuing anyway."
+        )
+    else:
+        logger.info(f"Started MQTT client pool with {mqtt_pool_size} clients")
 
-                        message_id, raw_message = result
-                        topic_m = f"{topic}/{message_id}"
-                        logger.debug(f"Topic: {topic_m}, Data: {len(raw_message)} bytes")
+    # Background parsing thread pool if PARSE_RAW is enabled
+    parse_executor: Optional[ThreadPoolExecutor] = None
+    connection_locks: Dict[int, threading.Lock] = {}
 
-                        if mqtt_connected.is_set():
-                            mqtt_client.publish(topic_m, raw_message, qos=0)
-                        messages_parsed += 1
+    def parse_task(fd: int, conn_obj: DataConnection, topic: str, ts: float, data: bytes) -> None:
+        """Task function for parsing RTCM messages in the thread pool."""
+        if conn_obj is None or fd not in connections:
+            return
+        tsi = time.time()
+        dts = tsi - ts
+        if dts > config.MESSAGE_AGE:
+            logger.info(f"Message too old {topic}")
+            return
 
-                    # Compact buffer if large
-                    buffer_size = len(conn_obj._buffer.getvalue())
-                    if buffer_size > 262144:
-                        unprocessed_data = conn_obj._buffer.read()
-                        logger.debug(
-                            f"{conn_obj.name}: Parser compacting buffer from {buffer_size} to {len(unprocessed_data)} bytes."
-                        )
-                        conn_obj._buffer = io.BytesIO(unprocessed_data)
+        lock = connection_locks.setdefault(fd, threading.Lock())
 
-                except Exception as e:
-                    logger.error(f"Parsing thread error for fd={fd}: {e}")
+        try:
+            with lock:
+                conn_obj._buffer.seek(0, io.SEEK_END)
+                conn_obj._buffer.write(data)
+                conn_obj._buffer.seek(0)
 
-            except queue.Empty:
-                continue
+                messages_parsed = 0
+                while True:
+                    result = conn_obj._rtcm_parser.parse(conn_obj._buffer)
+                    if result is None:
+                        break
+
+                    message_id, raw_message = result
+                    topic_m = f"{topic}/{message_id}"
+                    logger.debug(f"Topic: {topic_m}, Data: {len(raw_message)} bytes")
+
+                    client, client_evt = next_mqtt_client()
+                    if client and client_evt and client_evt.is_set():
+                        client.publish(topic_m, raw_message, qos=0)
+                    messages_parsed += 1
+
+                buffer_size = len(conn_obj._buffer.getvalue())
+                if buffer_size > 262144:
+                    unprocessed_data = conn_obj._buffer.read()
+                    logger.debug(
+                        f"{conn_obj.name}: Parser compacting buffer from {buffer_size} to {len(unprocessed_data)} bytes."
+                    )
+                    conn_obj._buffer = io.BytesIO(unprocessed_data)
+
+        except Exception as e:
+            logger.error(f"Parsing thread error for fd={fd}: {e}")
 
     if config.PARSE_RAW:
-        parse_thread = threading.Thread(target=parsing_thread_func, daemon=False)
-        parse_thread.start()
+        # Create thread pool with configurable size (default 4 threads per worker)
+        pool_size = getattr(config, "PARSE_POOL_SIZE", 4)
+        parse_executor = ThreadPoolExecutor(
+            max_workers=pool_size, thread_name_prefix=f"parse-{w_id:02d}"
+        )
+        logger.info(f"Worker {name} started parsing pool with {pool_size} threads")
 
     # Main receive loop
     while not run_event.is_set():
@@ -230,33 +277,34 @@ def worker(
 
             if not config.PARSE_RAW:
                 # Raw mode: publish immediately, no parsing overhead
-                if mqtt_connected.is_set():
-                    mqtt_client.publish(topic_raw, data, qos=0)
+                client, client_evt = next_mqtt_client()
+                if client and client_evt and client_evt.is_set():
+                    if "AMST" in topic:
+                        logger.info(f"send message {topic}")
+                    client.publish(topic_raw, data, qos=0)
             else:
-                # Parse mode: publish raw immediately, queue for background parsing
-                if mqtt_connected.is_set():
-                    mqtt_client.publish(topic_raw, data, qos=0)
+                # Parse mode: publish raw immediately, submit parsing to thread pool
+                client, client_evt = next_mqtt_client()
+                if client and client_evt and client_evt.is_set():
+                    client.publish(topic_raw, data, qos=0)
 
-                # Append to buffer for background parsing
-                conn_obj._buffer.seek(0, io.SEEK_END)
-                conn_obj._buffer.write(data)
-
-                # Queue for background parsing (non-blocking)
-                try:
-                    parse_queue.put_nowait((fd, conn_obj, topic))
-                except queue.Full:
-                    logger.debug(f"Parse queue full for fd={fd}, skipping background parse")
+                # Submit parsing task to thread pool (non-blocking)
+                if parse_executor is not None:
+                    ts = time.time()
+                    parse_executor.submit(parse_task, fd, conn_obj, topic, ts, data)
 
         except Exception as e:
             logger.error(traceback.format_exc())
 
     # Cleanup
     mqtt_should_stop.set()
-    if config.PARSE_RAW:
-        parse_stop.set()
-        parse_thread.join(timeout=2)
-    mqtt_client.loop_stop()
-    try:
-        mqtt_client.disconnect()
-    except Exception:
-        pass
+    if parse_executor is not None:
+        logger.info(f"Worker {name} shutting down parsing pool...")
+        parse_executor.shutdown(wait=True, cancel_futures=False)
+
+    for client, _evt in mqtt_clients:
+        try:
+            client.loop_stop()
+            client.disconnect()
+        except Exception:
+            pass

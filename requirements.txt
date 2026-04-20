@@ -5,3 +5,4 @@ dotenv
 pyrtcm
 pyserial
 prometheus_client
+pybind11>=2.10.0
